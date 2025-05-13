@@ -1,10 +1,30 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 
-
+import os
 from dash import Dash, html, dcc, Input, Output, callback
 import plotly.express as px
 import pandas as pd
+
+def load_data() -> pd.DataFrame:
+    file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
+    data_path = 'data/' + file_name
+    url = 'http://www.jannik-rosendahl.com/data/' + file_name
+    
+    # check if the file exists locally
+    try:
+        with open(data_path, 'r') as f:
+            df = pd.read_csv(f)
+            print('Loaded data from local file')
+    except FileNotFoundError:
+        os.makedirs('data', exist_ok=True)
+        print('Local file not found, downloading from URL, this may take a minute')
+        df = pd.read_csv(url)
+        df.to_csv(data_path, index=False)
+        print('Downloaded data from URL and saved to local file')
+    return df
+
+data = load_data()
 
 app = Dash()
 
