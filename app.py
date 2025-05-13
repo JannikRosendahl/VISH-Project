@@ -40,11 +40,7 @@ app.layout = html.Div(children=[
         ),
 
         html.Div(id='date-slider-output')
-    ]),
-
-    html.Div(children='''
-        Dash: A web application framework for your data.
-    ''')
+    ])
 ]) 
 
 @callback(
