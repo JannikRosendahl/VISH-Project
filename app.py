@@ -2,12 +2,12 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 import os
+from click import style
 from dash import Dash, html, dcc, Input, Output, callback
 import plotly.express as px
 import pandas as pd
 
 app = Dash()
-
 
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
@@ -33,12 +33,16 @@ def load_data() -> pd.DataFrame:
 
 data = load_data()
 
-
-minTimestamp = int(pd.Timestamp(pd.to_datetime(data['event_date']).min().date()).timestamp())
-maxTimestamp = int(pd.Timestamp(pd.to_datetime(data['event_date']).max().date()).timestamp())
+minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
+maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 
 selectedMinDate = minTimestamp
 selectedMaxDate = maxTimestamp
+
+# Create a fixed color palette for each sub_event_type
+sub_event_types = data['sub_event_type'].unique()
+color_palette = px.colors.qualitative.Pastel
+color_map = {sub_event: color_palette[i % len(color_palette)] for i, sub_event in enumerate(sorted(sub_event_types))}
 
 data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= selectedMinDate) &
                  (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= selectedMaxDate)]
@@ -68,67 +72,96 @@ def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
     )
     return fig
 
-app.layout = html.Div(
-    style={
-        'display': 'grid',
-        'gridTemplateColumns': '2fr 1fr',
-        'gridTemplateRows': '2fr 1fr',
-        'gap': '2px',
-        'height': '100vh',
-        'padding': '2px',
-        'boxSizing': 'border-box',
-    },
-    children=[
-        html.Div(
-            children=[
-                html.Div(
-                    children=[dcc.Graph(figure=create_map(), style={'height': '90%', 'width': '100%'})],
-                    style={'border': '1px solid #ccc', }
-                ),
-                html.Div(
-                    children=[
-                        dcc.RangeSlider(
-                            minTimestamp, maxTimestamp, 86400,  # 86400 seconds = 1 day
-                            value=[minTimestamp, maxTimestamp],
-                            id='date-slider',
-                            marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
-                            tooltip={
-                                "placement": "bottom", 
-                                "always_visible": True,
-                                "transform": "formatTimestamp"
-                            }
-                        ),
-                        html.Div(id='date-slider-output')
-                    ]
-                )
-            ]
-        ),
-        html.Div('Placeholder 2', style={
-            'backgroundColor': '#f0f0f0',
-            'display': 'flex',
-            'alignItems': 'center',
-            'justifyContent': 'center',
-            'border': '2px dashed #aaa',
-            'fontSize': '20px'
-        }),
-        html.Div('Placeholder 3', style={
-            'backgroundColor': '#f0f0f0',
-            'display': 'flex',
-            'alignItems': 'center',
-            'justifyContent': 'center',
-            'border': '2px dashed #aaa',
-            'fontSize': '20px'
-        }),
-        html.Div('Placeholder 4', style={
-            'backgroundColor': '#f0f0f0',
-            'display': 'flex',
-            'alignItems': 'center',
-            'justifyContent': 'center',
-            'border': '2px dashed #aaa',
-            'fontSize': '20px'
-        }),
-    ]
+app.layout = html.Div(children=[
+    html.H1("Ukraine Dashboard"),
+    html.Div(
+        style={
+            'display': 'grid',
+            'gridTemplateColumns': '2fr 1fr',
+            'gridTemplateRows': '2fr 1fr',
+            'gap': '2px',
+            'height': '100vh',
+            'padding': '2px',
+            'boxSizing': 'border-box',
+        },
+        children=[
+            html.Div(
+                children=[
+                    html.Div(
+                        children=[dcc.Graph(figure=create_map(), style={'height': '90%', 'width': '100%'})],
+                        style={'border': '1px solid #ccc', }
+                    ),
+                    html.Div(
+                        children=[
+                            dcc.RangeSlider(
+                                minTimestamp, maxTimestamp, 86400,  # 86400 seconds = 1 day
+                                value=[minTimestamp, maxTimestamp],
+                                id='date-slider',
+                                marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
+                                tooltip={
+                                    "placement": "bottom", 
+                                    "always_visible": True,
+                                    "transform": "formatTimestamp"
+                                },
+                                allowCross=False
+                            ),
+                            html.Div(id='date-slider-output', style={"margin" : "1rem"})
+                        ],
+                        style={"margin" : "1rem"}
+                    )
+                ]
+            ),
+            html.Div('Placeholder 2', style={
+                'backgroundColor': '#f0f0f0',
+                'display': 'flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+                'border': '2px dashed #aaa',
+                'fontSize': '20px'
+            }),
+            html.Div(
+                children=[
+                    html.Div(
+                        children=[dcc.Graph(id='event-type-bar', style={'height': '100%', 'width': '100%'})],
+                        style={'border': '1px solid #ccc'}
+                    )
+                ],
+            ),
+            html.Div('Placeholder 4', style={
+                'backgroundColor': '#f0f0f0',
+                'display': 'flex',
+                'alignItems': 'center',
+                'justifyContent': 'center',
+                'border': '2px dashed #aaa',
+                'fontSize': '20px'
+            }),
+        ]
+    )
+])
+
+# Add callback for bar chart
+@app.callback(
+    Output('event-type-bar', 'figure'),
+    Input('date-slider', 'value')
 )
+def update_event_type_bar(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    event_counts = filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
+    fig = px.bar(
+        event_counts,
+        x='event_type',
+        y='count',
+        color='sub_event_type',
+        color_discrete_map=color_map,
+        title='Event Type Breakdown by Sub Event Type',
+        labels={'count': 'Number of Events', 'event_type': 'Event Type', 'sub_event_type': 'Sub Event Type'},
+        barmode='stack'
+    )
+    return fig
 
 @callback(
     Output('date-slider-output', 'children'),
