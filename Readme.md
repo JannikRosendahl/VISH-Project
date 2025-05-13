@@ -2,14 +2,14 @@
 
 ## Setup
 
-### Create virtual environment on macOS and Linux
+### Create and activate virtual environment on macOS and Linux
 ```bash
 # setup virtual environment
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-### Create virtual environment on Windows
+### Create and activate virtual environment on Windows
 ```cmd
 # setup virtual environment
 python -m venv .venv
