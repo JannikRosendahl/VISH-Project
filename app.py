@@ -47,17 +47,25 @@ first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().
 
 def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
     fig = px.scatter_map(
-        data[['latitude', 'longitude']],
+        data_filtered[['latitude', 'longitude', 'fatalities', 'country']],
+        # data['fatalities'] > 0
+        #  & ()
         lat='latitude',
         lon='longitude',
         #hover_name='name',
-        #hover_data=['lat', 'lon'],
-        color_discrete_sequence=['blue'],
-        zoom=10,
-        #height=600
+        hover_data=['fatalities'],
+        color='country',
+        color_discrete_sequence=px.colors.qualitative.Plotly,
+        size='fatalities',
+        zoom=5,
+        #height=600,
     )
-    fig.update_layout(mapbox_style='open-street-map')
-    fig.update_traces(marker=dict(size=5))
+    fig.update_layout(
+        #mapbox_style='open-street-map'
+    )
+    fig.update_traces(
+        #cluster=dict(enabled=True)
+    )
     return fig
 
 app.layout = html.Div(
@@ -74,7 +82,7 @@ app.layout = html.Div(
         html.Div(
             children=[
                 html.Div(
-                    dcc.Graph(figure=create_map(), style={'height': '90%', 'width': '100%'}),
+                    children=[dcc.Graph(figure=create_map(), style={'height': '90%', 'width': '100%'})],
                     style={'border': '1px solid #ccc', }
                 ),
                 html.Div(
@@ -121,7 +129,6 @@ app.layout = html.Div(
         }),
     ]
 )
-
 
 @callback(
     Output('date-slider-output', 'children'),
