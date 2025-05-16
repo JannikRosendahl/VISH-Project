@@ -111,14 +111,14 @@ app.layout = html.Div(children=[
                     )
                 ]
             ),
-            html.Div('Placeholder 2', style={
-                'backgroundColor': '#f0f0f0',
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'border': '2px dashed #aaa',
-                'fontSize': '20px'
-            }),
+            html.Div(
+                children=[
+                    html.Div(
+                        children=[dcc.Graph(id='events-by-source', style={'height': '100%', 'width': '100%'})],
+                        style={'border': '1px solid #ccc'}
+                    )
+                ],
+            ),
             html.Div(
                 children=[
                     html.Div(
@@ -139,8 +139,49 @@ app.layout = html.Div(children=[
     )
 ])
 
+@callback(
+    Output('events-by-source', 'figure'),
+    Input('date-slider', 'value')
+)
+def update_events_by_source(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    # Count events per source
+    top_sources = (
+        filtered.groupby(['source']).size()
+        .nlargest(5)
+        .index.tolist()
+    )
+    filtered_top = filtered[filtered['source'].isin(top_sources)]
+    source_event_counts = (
+        filtered_top.groupby(['source', 'sub_event_type'])
+        .size()
+        .reset_index(name='count')
+    )
+    # Sort by total number of reports per source (descending)
+    source_totals = source_event_counts.groupby('source')['count'].sum().sort_values(ascending=False)
+    source_event_counts['source'] = pd.Categorical(
+        source_event_counts['source'],
+        categories=source_totals.index,
+        ordered=True
+    )
+    source_event_counts = source_event_counts.sort_values(['source', 'sub_event_type'])
+    fig = px.bar(
+        source_event_counts,
+        x='source',
+        y='count',
+        color='sub_event_type',
+        title='Top 5 Reporting Sources and Sub Event Types',
+        labels={'count': 'Number of Events', 'source': 'Source', 'sub_event_type': 'Sub Event Type'},
+        barmode='stack'
+    )
+    return fig
+
 # Add callback for bar chart
-@app.callback(
+@callback(
     Output('event-type-bar', 'figure'),
     Input('date-slider', 'value')
 )
