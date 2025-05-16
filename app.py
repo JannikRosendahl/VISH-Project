@@ -50,6 +50,10 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
 def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
+    data_filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
+    ]
     fig = px.scatter_map(
         data_filtered[['latitude', 'longitude', 'fatalities', 'country']],
         # data['fatalities'] > 0
@@ -88,7 +92,8 @@ app.layout = html.Div(children=[
             html.Div(
                 children=[
                     html.Div(
-                        children=[dcc.Graph(figure=create_map(), style={'height': '90%', 'width': '100%'})],
+
+                        children=[dcc.Graph(id='map', figure=create_map(), style={'height': '90%', 'width': '100%'})],
                         style={'border': '1px solid #ccc', }
                     ),
                     html.Div(
@@ -138,6 +143,16 @@ app.layout = html.Div(children=[
         ]
     )
 ])
+
+# Add callback for map
+@app.callback(
+    Output('map', 'figure'),
+    Input('date-slider', 'value')
+)
+def update_map(date_range):
+    start_ts, end_ts = date_range
+    fig = create_map(start_ts, end_ts)
+    return fig
 
 # Add callback for bar chart
 @app.callback(
