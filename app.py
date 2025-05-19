@@ -44,6 +44,19 @@ sub_event_types = data['sub_event_type'].unique()
 color_palette = px.colors.qualitative.Pastel
 color_map = {sub_event: color_palette[i % len(color_palette)] for i, sub_event in enumerate(sorted(sub_event_types))}
 
+# country color map
+country_palette = px.colors.qualitative.Alphabet
+countries = sorted(data['country'].unique())
+country_color_map = {}
+
+for i, country in enumerate(countries):
+    if country.lower() == 'ukraine':
+        country_color_map[country] = 'blue'
+    elif country.lower() == 'russia':
+        country_color_map[country] = 'red'
+    else:
+        country_color_map[country] = country_palette[i % len(country_palette)]
+
 data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= selectedMinDate) &
                  (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= selectedMaxDate)]
 
@@ -63,13 +76,14 @@ def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
         #hover_name='name',
         hover_data=['fatalities'],
         color='country',
-        color_discrete_sequence=px.colors.qualitative.Plotly,
-        size='fatalities',
+        color_discrete_map=country_color_map,
+        #size='fatalities',
         zoom=5,
         #height=600,
     )
     fig.update_layout(
         #mapbox_style='open-street-map'
+        clickmode='event+select'
     )
     fig.update_traces(
         #cluster=dict(enabled=True)
@@ -77,7 +91,7 @@ def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
     return fig
 
 app.layout = html.Div(children=[
-    html.H1("Ukraine Dashboard"),
+    html.H1('Ukraine Dashboard'),
     html.Div(
         style={
             'display': 'grid',
@@ -104,15 +118,15 @@ app.layout = html.Div(children=[
                                 id='date-slider',
                                 marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
                                 tooltip={
-                                    "placement": "bottom", 
-                                    "always_visible": True,
-                                    "transform": "formatTimestamp"
+                                    'placement': 'bottom', 
+                                    'always_visible': True,
+                                    'transform': 'formatTimestamp'
                                 },
                                 allowCross=False
                             ),
-                            html.Div(id='date-slider-output', style={"margin" : "1rem"})
+                            html.Div(id='date-slider-output', style={'margin' : '1rem'})
                         ],
-                        style={"margin" : "1rem"}
+                        style={'margin' : '1rem'}
                     )
                 ]
             ),
@@ -132,14 +146,15 @@ app.layout = html.Div(children=[
                     )
                 ],
             ),
-            html.Div('Placeholder 4', style={
-                'backgroundColor': '#f0f0f0',
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'border': '2px dashed #aaa',
-                'fontSize': '20px'
-            }),
+            # html.Div('Placeholder 4', style={
+            #     'backgroundColor': '#f0f0f0',
+            #     'display': 'flex',
+            #     'alignItems': 'center',
+            #     'justifyContent': 'center',
+            #     'border': '2px dashed #aaa',
+            #     'fontSize': '20px'
+            # }),
+            html.Div(id='notes'),
         ]
     )
 ])
@@ -153,6 +168,24 @@ def update_map(date_range):
     start_ts, end_ts = date_range
     fig = create_map(start_ts, end_ts)
     return fig
+
+@app.callback(
+    Output('notes', 'children'),
+    Input('map', 'clickData'),
+)
+def update_notes(clickData):
+    if clickData is None:
+        return 'Click on a point on the map for details...'
+    else:
+        point_data = data.iloc[clickData['points'][0]['pointIndex']]
+        return html.P(children=[
+            f'Date: {point_data['event_date']}', html.Br(),
+            f'Type: {point_data['sub_event_type']}', html.Br(),
+            f'Fatalities: {point_data['fatalities']}', html.Br(),
+            f'Notes: {point_data['notes']}', html.Br(),
+        ])
+
+
 
 @callback(
     Output('events-by-source', 'figure'),
