@@ -8,6 +8,7 @@ import pandas as pd
 
 app = Dash()
 
+
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
     data_path = 'data/' + file_name
@@ -34,6 +35,19 @@ data = load_data()
 
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
+
+# country color map
+country_palette = px.colors.qualitative.Alphabet
+countries = sorted(data['country'].unique())
+country_color_map = {}
+
+for i, country in enumerate(countries):
+    if country.lower() == 'ukraine':
+        country_color_map[country] = 'blue'
+    elif country.lower() == 'russia':
+        country_color_map[country] = 'red'
+    else:
+        country_color_map[country] = country_palette[i % len(country_palette)]
 
 data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
                  (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)]
@@ -95,15 +109,15 @@ app.layout = html.Div(children=[
                     )
                 ],
             ),
-            html.Div('Placeholder 4', style={
-                'backgroundColor': '#f0f0f0',
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'border': '2px dashed #aaa',
-                'fontSize': '20px'
-            }),
-            html.Div('', id='hidden', style={'display' : 'none'}),
+            # html.Div('Placeholder 4', style={
+            #     'backgroundColor': '#f0f0f0',
+            #     'display': 'flex',
+            #     'alignItems': 'center',
+            #     'justifyContent': 'center',
+            #     'border': '2px dashed #aaa',
+            #     'fontSize': '20px'
+            # }),
+            html.Div(id='notes'),
         ]
     )
 ])
@@ -119,23 +133,20 @@ def render_map():
         #hover_name='name',
         hover_data=['fatalities'],
         color='country',
-        color_discrete_sequence=px.colors.qualitative.Plotly,
-        size='fatalities',
+        color_discrete_map=country_color_map,
+        #size='fatalities',
         zoom=5,
         #height=600,
     )
     fig.update_layout(
-        #mapbox_style='open-street-map'
+        clickmode='event+select'
     )
     fig.update_traces(
         #cluster=dict(enabled=True)
     )
     return fig
 
-@app.callback(
-    Output('notes', 'children'),
-    Input('map', 'clickData'),
-)
+@callback(Output('notes', 'children'), Input('map', 'clickData'))
 def update_notes(clickData):
     if clickData is None:
         return 'Click on a point on the map for details...'
@@ -148,18 +159,8 @@ def update_notes(clickData):
             f'Notes: {point_data['notes']}', html.Br(),
         ])
 
-
-
-@callback(
-    Output('events-by-source', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_events_by_source(date_range):
-    start_ts, end_ts = date_range
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
+def render_events_by_source():
+    global data_filtered
     # Count events per source
     top_sources = (
         data_filtered.groupby(['source']).size()
