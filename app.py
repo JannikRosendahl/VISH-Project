@@ -286,28 +286,5 @@ def update_fatalities_pie(date_range):
     )
     return fig
 
-
-# add callback for disorder_type pie chart
-@callback(
-    Output('disorder-type-pie', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_disorder_type_pie(date_range):
-    start_ts, end_ts = date_range
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    disorder_counts = filtered.groupby('disorder_type')['fatalities'].sum().reset_index()
-    disorder_counts = disorder_counts.sort_values(by='fatalities', ascending=False)
-    fig = px.pie(
-        disorder_counts,
-        values='fatalities',
-        names='disorder_type',
-        title='Fatalities by Disorder Type',
-        labels={'fatalities': 'Number of Fatalities', 'disorder_type': 'Disorder Type'}
-    )
-    return fig
-
 if __name__ == '__main__':
     app.run(debug=True)
