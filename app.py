@@ -41,7 +41,7 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
 app.layout = html.Div(children=[
-    html.H1("Ukraine Dashboard"),
+    html.H1('Ukraine Dashboard'),
     html.Div(
         style={
             'display': 'grid',
@@ -67,15 +67,15 @@ app.layout = html.Div(children=[
                                 id='date-slider',
                                 marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
                                 tooltip={
-                                    "placement": "bottom", 
-                                    "always_visible": True,
-                                    "transform": "formatTimestamp"
+                                    'placement': 'bottom', 
+                                    'always_visible': True,
+                                    'transform': 'formatTimestamp'
                                 },
                                 allowCross=False
                             ),
-                            html.Div(id='date-slider-output', style={"margin" : "1rem"})
+                            html.Div(id='date-slider-output', style={'margin' : '1rem'})
                         ],
-                        style={"margin" : "1rem"}
+                        style={'margin' : '1rem'}
                     )
                 ]
             ),
@@ -132,8 +132,34 @@ def render_map():
     )
     return fig
 
-def render_events_by_source():
-    global data_filtered
+@app.callback(
+    Output('notes', 'children'),
+    Input('map', 'clickData'),
+)
+def update_notes(clickData):
+    if clickData is None:
+        return 'Click on a point on the map for details...'
+    else:
+        point_data = data.iloc[clickData['points'][0]['pointIndex']]
+        return html.P(children=[
+            f'Date: {point_data['event_date']}', html.Br(),
+            f'Type: {point_data['sub_event_type']}', html.Br(),
+            f'Fatalities: {point_data['fatalities']}', html.Br(),
+            f'Notes: {point_data['notes']}', html.Br(),
+        ])
+
+
+
+@callback(
+    Output('events-by-source', 'figure'),
+    Input('date-slider', 'value')
+)
+def update_events_by_source(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
     # Count events per source
     top_sources = (
         data_filtered.groupby(['source']).size()
