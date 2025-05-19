@@ -125,24 +125,18 @@ app.layout = html.Div(children=[
 def render_map():
     global data_filtered
     fig = px.scatter_map(
-        data_filtered[['latitude', 'longitude', 'fatalities', 'country']],
-        # data['fatalities'] > 0
-        #  & ()
+        data_filtered,
         lat='latitude',
         lon='longitude',
-        #hover_name='name',
         hover_data=['fatalities'],
         color='country',
         color_discrete_map=country_color_map,
-        #size='fatalities',
         zoom=5,
-        #height=600,
+        custom_data=['event_id_cnty'],
+        opacity=1
     )
     fig.update_layout(
         clickmode='event+select'
-    )
-    fig.update_traces(
-        #cluster=dict(enabled=True)
     )
     return fig
 
@@ -150,14 +144,15 @@ def render_map():
 def update_notes(clickData):
     if clickData is None:
         return 'Click on a point on the map for details...'
-    else:
-        point_data = data.iloc[clickData['points'][0]['pointIndex']]
-        return html.P(children=[
-            f'Date: {point_data['event_date']}', html.Br(),
-            f'Type: {point_data['sub_event_type']}', html.Br(),
-            f'Fatalities: {point_data['fatalities']}', html.Br(),
-            f'Notes: {point_data['notes']}', html.Br(),
-        ])
+    print(clickData)
+    id = clickData['points'][0]['customdata'][0]
+    point_data = data[data['event_id_cnty'] == id].iloc[0]
+    return html.P(children=[
+        f'Date: {point_data['event_date']}', html.Br(),
+        f'Type: {point_data['sub_event_type']}', html.Br(),
+        f'Fatalities: {point_data['fatalities']}', html.Br(),
+        f'Notes: {point_data['notes']}', html.Br(),
+    ])
 
 def render_events_by_source():
     global data_filtered
