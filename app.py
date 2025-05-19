@@ -132,14 +132,14 @@ app.layout = html.Div(children=[
                     )
                 ],
             ),
-            html.Div('Placeholder 4', style={
-                'backgroundColor': '#f0f0f0',
-                'display': 'flex',
-                'alignItems': 'center',
-                'justifyContent': 'center',
-                'border': '2px dashed #aaa',
-                'fontSize': '20px'
-            }),
+            html.Div(
+                children=[
+                    html.Div(
+                        children=[dcc.Graph(id='disorder-type-pie', style={'height': '100%', 'width': '100%'})],
+                        style={'border': '1px solid #ccc'}
+                    )
+                ],
+            )
         ]
     )
 ])
@@ -227,6 +227,87 @@ def update_output(value):
     start_date = pd.to_datetime(value[0], unit='s').strftime('%Y-%m-%d')
     end_date = pd.to_datetime(value[1], unit='s').strftime('%Y-%m-%d')
     return f'Showing data starting from {start_date} to {end_date}'
+
+# add callback for fatalities line chart
+#@callback(
+#    Output('fatalities-line', 'figure'),
+#    Input('date-slider', 'value')
+#)
+def update_fatalities_line(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+
+    fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
+    fatalities_by_date['fatalities'] = fatalities_by_date['fatalities'].cumsum()
+    fig = px.line(
+        fatalities_by_date,
+        x='event_date',
+        y='fatalities',
+        title='Fatalities Over Time',
+        labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
+    )
+    return fig
+
+# add callback for fatalities by sub_event_type pie chart
+#@callback(
+#    Output('fatalities-pie', 'figure'),
+#    Input('date-slider', 'value')
+#)
+def update_fatalities_pie(date_range):
+    #start_ts, end_ts = date_range
+    #filtered = data[
+    #    (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+    #    (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    #]
+    #fatalities_by_sub_event = filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
+    fatalities_by_sub_event = data.groupby('sub_event_type')['fatalities'].sum().reset_index()
+    # cummulate groups with less than 1% of total fatalities together as "other"
+    total_fatalities = fatalities_by_sub_event['fatalities'].sum()
+    other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
+    if not other_group.empty:
+        other_group_sum = other_group['fatalities'].sum()
+        other_group_name = 'Other'
+        other_group_row = pd.DataFrame({'sub_event_type': [other_group_name], 'fatalities': [other_group_sum]})
+        fatalities_by_sub_event = pd.concat(
+            [fatalities_by_sub_event[~fatalities_by_sub_event['sub_event_type'].isin(other_group['sub_event_type'])],
+             other_group_row])
+    # Sort the DataFrame by fatalities in descending order
+    fatalities_by_sub_event = fatalities_by_sub_event.sort_values(by='fatalities', ascending=False)
+
+    fig = px.pie(
+        fatalities_by_sub_event,
+        values='fatalities',
+        names='sub_event_type',
+        title='Fatalities by Sub Event Type',
+        labels={'fatalities': 'Number of Fatalities', 'sub_event_type': 'Sub Event Type'}
+    )
+    return fig
+
+
+# add callback for disorder_type pie chart
+@callback(
+    Output('disorder-type-pie', 'figure'),
+    Input('date-slider', 'value')
+)
+def update_disorder_type_pie(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    disorder_counts = filtered.groupby('disorder_type')['fatalities'].sum().reset_index()
+    disorder_counts = disorder_counts.sort_values(by='fatalities', ascending=False)
+    fig = px.pie(
+        disorder_counts,
+        values='fatalities',
+        names='disorder_type',
+        title='Fatalities by Disorder Type',
+        labels={'fatalities': 'Number of Fatalities', 'disorder_type': 'Disorder Type'}
+    )
+    return fig
 
 if __name__ == '__main__':
     app.run(debug=True)
