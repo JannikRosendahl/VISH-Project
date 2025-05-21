@@ -2,7 +2,7 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 import os
-from dash import Dash, html, dcc, Input, Output, callback
+from dash import Dash, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
 import pandas as pd
 
@@ -29,12 +29,19 @@ def load_data() -> pd.DataFrame:
     # data preprocessing
     data = data[data['actor1'].str.contains('ukraine|russia', case=False, na=False)]
     data['event_date'] = pd.to_datetime(data['event_date'])
+
+    data['event_date_i'] = data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp()))
     return data
 
 data = load_data()
 
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
+
+# map color modes
+color_modes = ['country', 'sub_event_type', 'event_date']
+# sub_event_type color map
+sub_event_type_color_map = {sub_event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, sub_event_type in enumerate(sorted(data['sub_event_type'].unique()))}
 
 # country color map
 country_palette = px.colors.qualitative.Alphabet
@@ -89,7 +96,14 @@ app.layout = html.Div(children=[
                                 },
                                 allowCross=False
                             ),
-                            html.Div(id='date-slider-output', style={'margin' : '1rem'})
+                            html.Div(id='date-slider-output', style={'margin' : '1rem'}),
+                            html.Div(
+                                style={'margin' : '1rem'},
+                                children=[
+                                    'Map Color Options: ',
+                                    dcc.RadioItems(color_modes, color_modes[0], inline=True, id='map-color-selector')
+                                ]
+                            ),
                         ],
                         style={'margin' : '1rem'}
                     )
@@ -124,19 +138,60 @@ app.layout = html.Div(children=[
     )
 ])
 
-def render_map():
+def render_map(color_mode):
     global data_filtered
-    fig = px.scatter_map(
-        data_filtered,
-        lat='latitude',
-        lon='longitude',
-        hover_data=['fatalities'],
-        color='country',
-        color_discrete_map=country_color_map,
-        zoom=5,
-        custom_data=['event_id_cnty'],
-        opacity=1
-    )
+
+    match color_mode:
+        case 'country':
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='country',
+                color_discrete_map=country_color_map,
+                zoom=5,
+                custom_data=['event_id_cnty'],
+                opacity=1
+            )
+        case 'sub_event_type':
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='sub_event_type',
+                color_discrete_map=sub_event_type_color_map,
+                zoom=5,
+                custom_data=['event_id_cnty'],
+                opacity=1
+            )
+        case 'event_date':
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='event_date_i',
+                color_continuous_scale=px.colors.sequential.Plasma,
+                zoom=5,
+                custom_data=['event_id_cnty'],
+                opacity=1,
+                labels={'event_date_i': 'Event Date'}
+            )
+        case _:
+            print('Invalid color mode, defaulting to country')
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='country',
+                color_discrete_map=country_color_map,
+                zoom=5,
+                custom_data=['event_id_cnty'],
+                opacity=1
+            )
     fig.update_layout(
         clickmode='event+select'
     )
@@ -169,6 +224,7 @@ def update_date_slider(clickData):
     date = point_data['event_date']
     markers[int(pd.Timestamp(date).timestamp())] = { 'label': date.strftime('|'),'style': {"color": "blue", "fontSize": "60px", "transform": "translate(0, -35px)" } }
     return markers 
+
 
 def render_events_by_source():
     global data_filtered
@@ -227,16 +283,21 @@ def render_time_interval(minTimestamp, maxTimestamp):
     Output('events-by-source', 'figure'),
     Output('event-type-bar', 'figure'),
     Output('date-slider-output', 'children')
-], Input('date-slider', 'value'))
-def update_df(interval):
+], [
+    Input('date-slider', 'value'),
+    Input('map-color-selector', 'value'),
+])
+def update_df(interval, value):
     global data
     global data_filtered
+    triggered_id = ctx.triggered_id
+    print(f'callback triggered by {triggered_id}, {interval=}, {value=}')
     minTimestamp, maxTimestamp = interval
     data_filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
     ]
-    return render_map(), render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
+    return render_map(value), render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
 #@callback(
