@@ -471,7 +471,9 @@ def update_fatalities_pie(date_range):
         values='fatalities',
         names='sub_event_type',
         title='Fatalities by Sub Event Type',
-        labels={'fatalities': 'Number of Fatalities', 'sub_event_type': 'Sub Event Type'}
+        labels={'fatalities': 'Number of Fatalities', 'sub_event_type': 'Sub Event Type'},
+        color='sub_event_type',
+        color_discrete_map=sub_event_type_color_map,
     )
     return fig
 
