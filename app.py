@@ -2,7 +2,7 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 import os
-from dash import Dash, html, dcc, Input, Output, callback, ctx
+from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
 import pandas as pd
 
@@ -37,6 +37,8 @@ data = load_data()
 
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
+
+map_center = {}
 
 # map color modes
 color_modes = ['country', 'sub_event_type', 'event_date']
@@ -77,7 +79,7 @@ app.layout = html.Div(children=[
             html.Div(
                 children=[
                     html.Div(
-                        children=[dcc.Graph(id='map', style={'height': '90%', 'width': '100%'})],
+                        children=[dcc.Graph(id='map', clear_on_unhover=True, style={'height': '90%', 'width': '100%'})],
                         style={'border': '1px solid #ccc', }
                     ),
                     html.Div(
@@ -140,6 +142,7 @@ app.layout = html.Div(children=[
 
 def render_map(color_mode):
     global data_filtered
+    global map_center
 
     match color_mode:
         case 'country':
@@ -152,7 +155,8 @@ def render_map(color_mode):
                 color_discrete_map=country_color_map,
                 zoom=5,
                 custom_data=['event_id_cnty'],
-                opacity=1
+                opacity=1,
+                center=map_center
             )
         case 'sub_event_type':
             fig = px.scatter_map(
@@ -164,7 +168,8 @@ def render_map(color_mode):
                 color_discrete_map=sub_event_type_color_map,
                 zoom=5,
                 custom_data=['event_id_cnty'],
-                opacity=1
+                opacity=1,
+                center=map_center,
             )
         case 'event_date':
             fig = px.scatter_map(
@@ -177,7 +182,8 @@ def render_map(color_mode):
                 zoom=5,
                 custom_data=['event_id_cnty'],
                 opacity=1,
-                labels={'event_date_i': 'Event Date'}
+                labels={'event_date_i': 'Event Date'},
+                center=map_center,
             )
         case _:
             print('Invalid color mode, defaulting to country')
@@ -190,7 +196,8 @@ def render_map(color_mode):
                 color_discrete_map=country_color_map,
                 zoom=5,
                 custom_data=['event_id_cnty'],
-                opacity=1
+                opacity=1,
+                center=map_center,
             )
     fig.update_layout(
         clickmode='event+select'
@@ -288,10 +295,11 @@ def render_time_interval(minTimestamp, maxTimestamp):
 ], [
     Input('date-slider', 'value'),
     Input('map-color-selector', 'value'),
-])
-def update_df(interval, value):
+], State('map', 'relayoutData'))
+def update_df(interval, value, relayoutData):
     global data
     global data_filtered
+    global map_center
     triggered_id = ctx.triggered_id
     print(f'callback triggered by {triggered_id}, {interval=}, {value=}')
     minTimestamp, maxTimestamp = interval
@@ -299,7 +307,18 @@ def update_df(interval, value):
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
     ]
-    return render_map(value), render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
+
+    map = render_map(value)
+    print(relayoutData)
+    if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
+        print('trying to preserve map state')
+        map_center = relayoutData['map.center']
+        map.update_layout(
+            mapbox_center=relayoutData['map.center'],
+            mapbox_zoom=relayoutData['map.zoom']
+        )
+
+    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
 #@callback(
