@@ -253,6 +253,7 @@ def render_events_by_source():
         x='source',
         y='count',
         color='sub_event_type',
+        color_discrete_map=sub_event_type_color_map,
         title='Top 5 Reporting Sources and Sub Event Types',
         labels={'count': 'Number of Events', 'source': 'Source', 'sub_event_type': 'Sub Event Type'},
         barmode='stack'
@@ -267,6 +268,7 @@ def render_event_type_bar():
         x='event_type',
         y='count',
         color='sub_event_type',
+        color_discrete_map=sub_event_type_color_map,
         title='Event Type Breakdown by Sub Event Type',
         labels={'count': 'Number of Events', 'event_type': 'Event Type', 'sub_event_type': 'Sub Event Type'},
         barmode='stack'
