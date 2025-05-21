@@ -138,13 +138,16 @@ def render_map():
     fig.update_layout(
         clickmode='event+select'
     )
+    fig.update_traces(
+        selected=dict(marker=dict(opacity=1)),
+        unselected=dict(marker=dict(opacity=1))
+    )
     return fig
 
 @callback(Output('notes', 'children'), Input('map', 'clickData'))
 def update_notes(clickData):
     if clickData is None:
         return 'Click on a point on the map for details...'
-    print(clickData)
     id = clickData['points'][0]['customdata'][0]
     point_data = data[data['event_id_cnty'] == id].iloc[0]
     return html.P(children=[
