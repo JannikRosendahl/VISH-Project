@@ -106,6 +106,13 @@ app.layout = html.Div(children=[
                                     dcc.RadioItems(color_modes, color_modes[0], inline=True, id='map-color-selector')
                                 ]
                             ),
+                            html.Div(
+                                style={'margin' : '1rem'},
+                                children=[
+                                    dcc.Checklist(['Include Non-Fatal Events'], ['Include Non-Fatal Events'], id='bool_options')
+                                ]
+                            ),
+
                         ],
                         style={'margin' : '1rem'}
                     )
@@ -295,20 +302,23 @@ def render_time_interval(minTimestamp, maxTimestamp):
 ], [
     Input('date-slider', 'value'),
     Input('map-color-selector', 'value'),
+    Input('bool_options', 'value'),
 ], State('map', 'relayoutData'))
-def update_df(interval, value, relayoutData):
+def update_df(interval, map_color_mode, bool_options, relayoutData):
     global data
     global data_filtered
     global map_center
     triggered_id = ctx.triggered_id
-    print(f'callback triggered by {triggered_id}, {interval=}, {value=}')
+    print(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}')
     minTimestamp, maxTimestamp = interval
     data_filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
     ]
+    if 'Include Non-Fatal Events' not in bool_options:
+        data_filtered = data_filtered[data_filtered['fatalities'] > 0]
 
-    map = render_map(value)
+    map = render_map(map_color_mode)
     print(relayoutData)
     if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
         print('trying to preserve map state')
