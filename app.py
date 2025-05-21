@@ -2,12 +2,12 @@
 # visit http://127.0.0.1:8050/ in your web browser.
 
 import os
-from click import style
 from dash import Dash, html, dcc, Input, Output, callback
 import plotly.express as px
 import pandas as pd
 
 app = Dash()
+
 
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
@@ -36,48 +36,26 @@ data = load_data()
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 
-selectedMinDate = minTimestamp
-selectedMaxDate = maxTimestamp
+# country color map
+country_palette = px.colors.qualitative.Alphabet
+countries = sorted(data['country'].unique())
+country_color_map = {}
 
-# Create a fixed color palette for each sub_event_type
-sub_event_types = data['sub_event_type'].unique()
-color_palette = px.colors.qualitative.Pastel
-color_map = {sub_event: color_palette[i % len(color_palette)] for i, sub_event in enumerate(sorted(sub_event_types))}
+for i, country in enumerate(countries):
+    if country.lower() == 'ukraine':
+        country_color_map[country] = 'blue'
+    elif country.lower() == 'russia':
+        country_color_map[country] = 'red'
+    else:
+        country_color_map[country] = country_palette[i % len(country_palette)]
 
-data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= selectedMinDate) &
-                 (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= selectedMaxDate)]
+data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+                 (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)]
 
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
-def create_map(minTimestamp=minTimestamp, maxTimestamp=maxTimestamp):
-    data_filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
-    ]
-    fig = px.scatter_map(
-        data_filtered[['latitude', 'longitude', 'fatalities', 'country']],
-        # data['fatalities'] > 0
-        #  & ()
-        lat='latitude',
-        lon='longitude',
-        #hover_name='name',
-        hover_data=['fatalities'],
-        color='country',
-        color_discrete_sequence=px.colors.qualitative.Plotly,
-        size='fatalities',
-        zoom=5,
-        #height=600,
-    )
-    fig.update_layout(
-        #mapbox_style='open-street-map'
-    )
-    fig.update_traces(
-        #cluster=dict(enabled=True)
-    )
-    return fig
-
 app.layout = html.Div(children=[
-    html.H1("Ukraine Dashboard"),
+    html.H1('Ukraine Dashboard'),
     html.Div(
         style={
             'display': 'grid',
@@ -92,8 +70,7 @@ app.layout = html.Div(children=[
             html.Div(
                 children=[
                     html.Div(
-
-                        children=[dcc.Graph(id='map', figure=create_map(), style={'height': '90%', 'width': '100%'})],
+                        children=[dcc.Graph(id='map', style={'height': '90%', 'width': '100%'})],
                         style={'border': '1px solid #ccc', }
                     ),
                     html.Div(
@@ -104,15 +81,15 @@ app.layout = html.Div(children=[
                                 id='date-slider',
                                 marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
                                 tooltip={
-                                    "placement": "bottom", 
-                                    "always_visible": True,
-                                    "transform": "formatTimestamp"
+                                    'placement': 'bottom',
+                                    'always_visible': True,
+                                    'transform': 'formatTimestamp'
                                 },
                                 allowCross=False
                             ),
-                            html.Div(id='date-slider-output', style={"margin" : "1rem"})
+                            html.Div(id='date-slider-output', style={'margin' : '1rem'})
                         ],
-                        style={"margin" : "1rem"}
+                        style={'margin' : '1rem'}
                     )
                 ]
             ),
@@ -132,45 +109,60 @@ app.layout = html.Div(children=[
                     )
                 ],
             ),
-            html.Div(
-                children=[
-                    html.Div(
-                        children=[dcc.Graph(id='disorder-type-pie', style={'height': '100%', 'width': '100%'})],
-                        style={'border': '1px solid #ccc'}
-                    )
-                ],
-            )
+            # html.Div('Placeholder 4', style={
+            #     'backgroundColor': '#f0f0f0',
+            #     'display': 'flex',
+            #     'alignItems': 'center',
+            #     'justifyContent': 'center',
+            #     'border': '2px dashed #aaa',
+            #     'fontSize': '20px'
+            # }),
+            html.Div(id='notes'),
         ]
     )
 ])
 
-# Add callback for map
-@app.callback(
-    Output('map', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_map(date_range):
-    start_ts, end_ts = date_range
-    fig = create_map(start_ts, end_ts)
+def render_map():
+    global data_filtered
+    fig = px.scatter_map(
+        data_filtered,
+        lat='latitude',
+        lon='longitude',
+        hover_data=['fatalities'],
+        color='country',
+        color_discrete_map=country_color_map,
+        zoom=5,
+        custom_data=['event_id_cnty'],
+        opacity=1
+    )
+    fig.update_layout(
+        clickmode='event+select'
+    )
     return fig
 
-@callback(
-    Output('events-by-source', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_events_by_source(date_range):
-    start_ts, end_ts = date_range
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
+@callback(Output('notes', 'children'), Input('map', 'clickData'))
+def update_notes(clickData):
+    if clickData is None:
+        return 'Click on a point on the map for details...'
+    print(clickData)
+    id = clickData['points'][0]['customdata'][0]
+    point_data = data[data['event_id_cnty'] == id].iloc[0]
+    return html.P(children=[
+        f'Date: {point_data['event_date']}', html.Br(),
+        f'Type: {point_data['sub_event_type']}', html.Br(),
+        f'Fatalities: {point_data['fatalities']}', html.Br(),
+        f'Notes: {point_data['notes']}', html.Br(),
+    ])
+
+def render_events_by_source():
+    global data_filtered
     # Count events per source
     top_sources = (
-        filtered.groupby(['source']).size()
+        data_filtered.groupby(['source']).size()
         .nlargest(5)
         .index.tolist()
     )
-    filtered_top = filtered[filtered['source'].isin(top_sources)]
+    filtered_top = data_filtered[data_filtered['source'].isin(top_sources)]
     source_event_counts = (
         filtered_top.groupby(['source', 'sub_event_type'])
         .size()
@@ -195,38 +187,40 @@ def update_events_by_source(date_range):
     )
     return fig
 
-# Add callback for bar chart
-@callback(
-    Output('event-type-bar', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_event_type_bar(date_range):
-    start_ts, end_ts = date_range
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    event_counts = filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
+def render_event_type_bar():
+    global data_filtered
+    event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
     fig = px.bar(
         event_counts,
         x='event_type',
         y='count',
         color='sub_event_type',
-        color_discrete_map=color_map,
         title='Event Type Breakdown by Sub Event Type',
         labels={'count': 'Number of Events', 'event_type': 'Event Type', 'sub_event_type': 'Sub Event Type'},
         barmode='stack'
     )
     return fig
 
-@callback(
-    Output('date-slider-output', 'children'),
-    Input('date-slider', 'value')
-)
-def update_output(value):
-    start_date = pd.to_datetime(value[0], unit='s').strftime('%Y-%m-%d')
-    end_date = pd.to_datetime(value[1], unit='s').strftime('%Y-%m-%d')
+def render_time_interval(minTimestamp, maxTimestamp):
+    start_date = pd.to_datetime(minTimestamp, unit='s').strftime('%Y-%m-%d')
+    end_date = pd.to_datetime(maxTimestamp, unit='s').strftime('%Y-%m-%d')
     return f'Showing data starting from {start_date} to {end_date}'
+
+@callback([
+    Output('map', 'figure'),
+    Output('events-by-source', 'figure'),
+    Output('event-type-bar', 'figure'),
+    Output('date-slider-output', 'children')
+], Input('date-slider', 'value'))
+def update_df(interval):
+    global data
+    global data_filtered
+    minTimestamp, maxTimestamp = interval
+    data_filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
+    ]
+    return render_map(), render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
 #@callback(
