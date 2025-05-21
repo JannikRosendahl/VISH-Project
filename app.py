@@ -79,7 +79,9 @@ app.layout = html.Div(children=[
                                 minTimestamp, maxTimestamp, 86400,  # 86400 seconds = 1 day
                                 value=[minTimestamp, maxTimestamp],
                                 id='date-slider',
-                                marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
+                                marks={
+                                    int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years
+                                },
                                 tooltip={
                                     'placement': 'bottom',
                                     'always_visible': True,
@@ -156,6 +158,17 @@ def update_notes(clickData):
         f'Fatalities: {point_data['fatalities']}', html.Br(),
         f'Notes: {point_data['notes']}', html.Br(),
     ])
+
+@callback(Output('date-slider', 'marks'), Input('map', 'clickData'))
+def update_date_slider(clickData):
+    markers = {int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years}
+    if clickData is None:
+        return markers
+    id = clickData['points'][0]['customdata'][0]
+    point_data = data[data['event_id_cnty'] == id].iloc[0]
+    date = point_data['event_date']
+    markers[int(pd.Timestamp(date).timestamp())] = { 'label': date.strftime('|'),'style': {"color": "blue", "fontSize": "60px", "transform": "translate(0, -35px)" } }
+    return markers 
 
 def render_events_by_source():
     global data_filtered
