@@ -63,89 +63,176 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
-app.layout = html.Div(children=[
-    html.H1('Ukraine Dashboard'),
-    html.Div(
-        style={
-            'display': 'grid',
-            'gridTemplateColumns': '2fr 1fr',
-            'gridTemplateRows': '2fr 1fr',
-            'gap': '2px',
-            'height': '100vh',
-            'padding': '2px',
-            'boxSizing': 'border-box',
-        },
-        children=[
-            html.Div(
-                children=[
-                    html.Div(
-                        children=[dcc.Graph(id='map', clear_on_unhover=True, style={'height': '90%', 'width': '100%'})],
-                        style={'border': '1px solid #ccc', }
-                    ),
-                    html.Div(
-                        children=[
-                            dcc.RangeSlider(
-                                minTimestamp, maxTimestamp, 86400,  # 86400 seconds = 1 day
-                                value=[minTimestamp, maxTimestamp],
-                                id='date-slider',
-                                marks={
-                                    int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years
-                                },
-                                tooltip={
-                                    'placement': 'bottom',
-                                    'always_visible': True,
-                                    'transform': 'formatTimestamp'
-                                },
-                                allowCross=False
+app.layout = html.Div(
+    style={
+        'height': '100vh',
+        'backgroundColor': '#f7f9fa',
+        'fontFamily': 'Segoe UI, Arial, sans-serif'
+    },
+    children=[
+        # Header row with title and date slider
+        html.Div(
+            style={
+                'display': 'flex',
+                'alignItems': 'center',
+                'backgroundColor': '#1a2636',
+                'color': 'white',
+                'padding': '1.5rem 2rem',
+                'fontSize': '2rem',
+                'fontWeight': 'bold',
+                'letterSpacing': '1px',
+                'boxShadow': '0 2px 8px rgba(0,0,0,0.05)'
+            },
+            children=[
+                html.Div(
+                    'Ukraine Dashboard',
+                    style={'flex': '0 0 auto'}
+                ),
+                html.Div(
+                    style={'flex': '1', 'marginLeft': '3rem', 'marginRight': '2rem'},
+                    children=[
+                        html.Label('Date Range', style={'fontWeight': 'bold', 'color': 'white', 'fontSize': '1.1rem'}),
+                        dcc.RangeSlider(
+                            minTimestamp, maxTimestamp, 86400,
+                            value=[minTimestamp, maxTimestamp],
+                            id='date-slider',
+                            marks={int(pd.Timestamp(date).timestamp()): date.strftime('%Y-%m-%d') for date in first_of_years},
+                            tooltip={'placement': 'bottom', 'always_visible': True, 'transform': 'formatTimestamp'},
+                            allowCross=False
+                        ),
+                        html.Div(id='date-slider-output', style={'marginTop': '0.5rem', 'fontSize': '1rem', 'color': '#fff'}),
+                    ]
+                )
+            ]
+        ),
+        # Main content area
+        html.Div(
+            style={
+                'display': 'flex',
+                'height': 'calc(100vh - 120px)',
+                'padding': '1rem'
+            },
+            children=[
+                # Sidebar for controls
+                html.Div(
+                    style={
+                        'width': '320px',
+                        'backgroundColor': 'white',
+                        'borderRadius': '12px',
+                        'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                        'padding': '2rem 1.5rem',
+                        'marginRight': '2rem',
+                        'display': 'flex',
+                        'flexDirection': 'column',
+                        'gap': '2rem',
+                        'minWidth': '260px',
+                        'maxHeight': '100%',
+                        'overflowY': 'auto'
+                    },
+                    children=[
+                        html.Div([
+                            html.Label('Map Color Options', style={'fontWeight': 'bold'}),
+                            dcc.RadioItems(
+                                color_modes, color_modes[0], inline=True, id='map-color-selector',
+                                style={'marginTop': '0.5rem'}
                             ),
-                            html.Div(id='date-slider-output', style={'margin' : '1rem'}),
-                            html.Div(
-                                style={'margin' : '1rem'},
-                                children=[
-                                    'Map Color Options: ',
-                                    dcc.RadioItems(color_modes, color_modes[0], inline=True, id='map-color-selector')
-                                ]
-                            ),
-                            html.Div(
-                                style={'margin' : '1rem'},
-                                children=[
-                                    dcc.Checklist(['Include Non-Fatal Events'], ['Include Non-Fatal Events'], id='bool_options')
-                                ]
-                            ),
-
-                        ],
-                        style={'margin' : '1rem'}
-                    )
-                ]
-            ),
-            html.Div(
-                children=[
-                    html.Div(
-                        children=[dcc.Graph(id='events-by-source', style={'height': '100%', 'width': '100%'})],
-                        style={'border': '1px solid #ccc'}
-                    )
-                ],
-            ),
-            html.Div(
-                children=[
-                    html.Div(
-                        children=[dcc.Graph(id='event-type-bar', style={'height': '100%', 'width': '100%'})],
-                        style={'border': '1px solid #ccc'}
-                    )
-                ],
-            ),
-            # html.Div('Placeholder 4', style={
-            #     'backgroundColor': '#f0f0f0',
-            #     'display': 'flex',
-            #     'alignItems': 'center',
-            #     'justifyContent': 'center',
-            #     'border': '2px dashed #aaa',
-            #     'fontSize': '20px'
-            # }),
-            html.Div(id='notes'),
-        ]
-    )
-])
+                        ]),
+                        html.Div([
+                            dcc.Checklist(
+                                ['Include Non-Fatal Events'],
+                                ['Include Non-Fatal Events'],
+                                id='bool_options',
+                                style={'marginTop': '0.5rem'}
+                            )
+                        ]),
+                        html.Div(
+                            id='notes',
+                            style={
+                                'marginTop': '2rem',
+                                'padding': '1rem',
+                                'backgroundColor': '#f0f4f8',
+                                'borderRadius': '8px',
+                                'fontSize': '1rem',
+                                'minHeight': '80px'
+                            }
+                        ),
+                    ]
+                ),
+                # Main plots area
+                html.Div(
+                    style={
+                        'flex': 1,
+                        'display': 'grid',
+                        'gridTemplateColumns': 'repeat(4, 1fr)',
+                        'gridTemplateRows': '2fr 1fr',
+                        'gap': '1.5rem',
+                        'height': '100%',
+                        'minWidth': '0'
+                    },
+                    children=[
+                        # Map spans all 4 columns on the first row
+                        html.Div(
+                            dcc.Graph(id='map', clear_on_unhover=True, style={'height': '100%', 'width': '100%'}),
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': '1 / span 4',
+                                'gridRow': '1'
+                            }
+                        ),
+                        # Four widgets on the second row
+                        html.Div(
+                            dcc.Graph(id='events-by-source', style={'height': '100%', 'width': '100%'}),
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': '1',
+                                'gridRow': '2'
+                            }
+                        ),
+                        html.Div(
+                            dcc.Graph(id='event-type-bar', style={'height': '100%', 'width': '100%'}),
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': '2',
+                                'gridRow': '2'
+                            }
+                        ),
+                        html.Div(
+                            dcc.Graph(id='fatalities-line', style={'height': '100%', 'width': '100%'}),
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': '3',
+                                'gridRow': '2'
+                            }
+                        ),
+                        html.Div(
+                            dcc.Graph(id='fatalities-pie', style={'height': '100%', 'width': '100%'}),
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': '4',
+                                'gridRow': '2'
+                            }
+                        ),
+                    ]
+                ),
+            ]
+        )
+    ]
+)
 
 def render_map(color_mode):
     global data_filtered
@@ -331,10 +418,10 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
     return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
-#@callback(
-#    Output('fatalities-line', 'figure'),
-#    Input('date-slider', 'value')
-#)
+@callback(
+   Output('fatalities-line', 'figure'),
+   Input('date-slider', 'value')
+)
 def update_fatalities_line(date_range):
     start_ts, end_ts = date_range
     filtered = data[
@@ -354,10 +441,10 @@ def update_fatalities_line(date_range):
     return fig
 
 # add callback for fatalities by sub_event_type pie chart
-#@callback(
-#    Output('fatalities-pie', 'figure'),
-#    Input('date-slider', 'value')
-#)
+@callback(
+   Output('fatalities-pie', 'figure'),
+   Input('date-slider', 'value')
+)
 def update_fatalities_pie(date_range):
     #start_ts, end_ts = date_range
     #filtered = data[
