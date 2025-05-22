@@ -64,8 +64,8 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
 # Configurable number of rows and columns for bottom widgets
-WIDGET_ROWS = 2
-WIDGET_COLS = 3
+WIDGET_ROWS = 3
+WIDGET_COLS = 2
 
 # Configurable minimum heights (in px)
 MAP_MIN_HEIGHT = 600
@@ -77,6 +77,7 @@ widget_graphs = [
     ('event-type-bar', 'Event Type Bar'),
     ('fatalities-line', 'Fatalities Line'),
     ('fatalities-pie', 'Fatalities Pie'),
+    ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
     # Add more widget IDs here if needed
 ]
 
@@ -182,9 +183,10 @@ app.layout = html.Div(
                         'flex': 1,
                         'display': 'grid',
                         'gridTemplateColumns': f'repeat({WIDGET_COLS}, 1fr)',
-                        'gridTemplateRows': f'repeat({WIDGET_ROWS + 1}, auto)',  # +1 for the map row
+                        'gridTemplateRows': f'auto repeat({WIDGET_ROWS}, 1fr)',  # Map row auto, widgets fill space
                         'gap': '1.5rem',
-                        'minWidth': '0'
+                        'minWidth': '0',
+                        #'height': '100%'  # Make grid fill available vertical space
                     },
                     children=[
                         # Map spans all columns on the first row
@@ -211,7 +213,8 @@ app.layout = html.Div(
                                     'padding': '1rem',
                                     'gridColumn': f'{(i % WIDGET_COLS) + 1}',
                                     'gridRow': f'{(i // WIDGET_COLS) + 2}',
-                                    'minHeight': f'{WIDGET_MIN_HEIGHT}px'
+                                    'minHeight': f'{WIDGET_MIN_HEIGHT}px',
+                                    #'height': '100%'  # Make widget fill grid cell
                                 }
                             )
                             for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
@@ -464,6 +467,36 @@ def update_fatalities_pie(date_range):
         color='sub_event_type',
         color_discrete_map=sub_event_type_color_map,
     )
+    return fig
+
+# Add callback for sub_event_type stacked line chart
+@callback(
+    Output('subeventtype-line', 'figure'),
+    Input('date-slider', 'value')
+)
+def update_subeventtype_line(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    # Group by date and sub_event_type
+    grouped = (
+        filtered.groupby(['event_date', 'sub_event_type'])
+        .size()
+        .reset_index(name='count')
+    )
+    # Pivot for stacked line chart
+    pivot = grouped.pivot(index='event_date', columns='sub_event_type', values='count').fillna(0).cumsum()
+    fig = px.area(
+        pivot,
+        x=pivot.index,
+        y=pivot.columns,
+        title='Cumulative Events by Sub Event Type Over Time',
+        labels={'value': 'Number of Events', 'event_date': 'Date', 'variable': 'Sub Event Type'},
+        color_discrete_map=sub_event_type_color_map,
+    )
+    fig.update_layout(legend_title_text='Sub Event Type')
     return fig
 
 if __name__ == '__main__':
