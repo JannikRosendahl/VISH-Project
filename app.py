@@ -63,11 +63,29 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
+# Configurable number of rows and columns for bottom widgets
+WIDGET_ROWS = 2
+WIDGET_COLS = 3
+
+# Configurable minimum heights (in px)
+MAP_MIN_HEIGHT = 600
+WIDGET_MIN_HEIGHT = 400
+
+# List of widget graph IDs (add or remove as needed)
+widget_graphs = [
+    ('events-by-source', 'Events by Source'),
+    ('event-type-bar', 'Event Type Bar'),
+    ('fatalities-line', 'Fatalities Line'),
+    ('fatalities-pie', 'Fatalities Pie'),
+    # Add more widget IDs here if needed
+]
+
 app.layout = html.Div(
     style={
-        'height': '100vh',
+        'minHeight': '100vh',
         'backgroundColor': '#f7f9fa',
-        'fontFamily': 'Segoe UI, Arial, sans-serif'
+        'fontFamily': 'Segoe UI, Arial, sans-serif',
+        'overflowY': 'auto'
     },
     children=[
         # Header row with title and date slider
@@ -109,7 +127,7 @@ app.layout = html.Div(
         html.Div(
             style={
                 'display': 'flex',
-                'height': 'calc(100vh - 120px)',
+                'minHeight': 'calc(100vh - 120px)',
                 'padding': '1rem'
             },
             children=[
@@ -163,14 +181,13 @@ app.layout = html.Div(
                     style={
                         'flex': 1,
                         'display': 'grid',
-                        'gridTemplateColumns': 'repeat(4, 1fr)',
-                        'gridTemplateRows': '2fr 1fr',
+                        'gridTemplateColumns': f'repeat({WIDGET_COLS}, 1fr)',
+                        'gridTemplateRows': f'repeat({WIDGET_ROWS + 1}, auto)',  # +1 for the map row
                         'gap': '1.5rem',
-                        'height': '100%',
                         'minWidth': '0'
                     },
                     children=[
-                        # Map spans all 4 columns on the first row
+                        # Map spans all columns on the first row
                         html.Div(
                             dcc.Graph(id='map', clear_on_unhover=True, style={'height': '100%', 'width': '100%'}),
                             style={
@@ -178,55 +195,27 @@ app.layout = html.Div(
                                 'borderRadius': '12px',
                                 'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
                                 'padding': '1rem',
-                                'gridColumn': '1 / span 4',
-                                'gridRow': '1'
+                                f'gridColumn': f'1 / span {WIDGET_COLS}',
+                                'gridRow': '1',
+                                'minHeight': f'{MAP_MIN_HEIGHT}px'
                             }
                         ),
-                        # Four widgets on the second row
-                        html.Div(
-                            dcc.Graph(id='events-by-source', style={'height': '100%', 'width': '100%'}),
-                            style={
-                                'backgroundColor': 'white',
-                                'borderRadius': '12px',
-                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                'padding': '1rem',
-                                'gridColumn': '1',
-                                'gridRow': '2'
-                            }
-                        ),
-                        html.Div(
-                            dcc.Graph(id='event-type-bar', style={'height': '100%', 'width': '100%'}),
-                            style={
-                                'backgroundColor': 'white',
-                                'borderRadius': '12px',
-                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                'padding': '1rem',
-                                'gridColumn': '2',
-                                'gridRow': '2'
-                            }
-                        ),
-                        html.Div(
-                            dcc.Graph(id='fatalities-line', style={'height': '100%', 'width': '100%'}),
-                            style={
-                                'backgroundColor': 'white',
-                                'borderRadius': '12px',
-                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                'padding': '1rem',
-                                'gridColumn': '3',
-                                'gridRow': '2'
-                            }
-                        ),
-                        html.Div(
-                            dcc.Graph(id='fatalities-pie', style={'height': '100%', 'width': '100%'}),
-                            style={
-                                'backgroundColor': 'white',
-                                'borderRadius': '12px',
-                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                'padding': '1rem',
-                                'gridColumn': '4',
-                                'gridRow': '2'
-                            }
-                        ),
+                        # Dynamically generate widgets for the bottom area
+                        *[
+                            html.Div(
+                                dcc.Graph(id=widget_id, style={'height': '100%', 'width': '100%'}),
+                                style={
+                                    'backgroundColor': 'white',
+                                    'borderRadius': '12px',
+                                    'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                    'padding': '1rem',
+                                    'gridColumn': f'{(i % WIDGET_COLS) + 1}',
+                                    'gridRow': f'{(i // WIDGET_COLS) + 2}',
+                                    'minHeight': f'{WIDGET_MIN_HEIGHT}px'
+                                }
+                            )
+                            for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
+                        ]
                     ]
                 ),
             ]
