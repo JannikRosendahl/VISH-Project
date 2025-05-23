@@ -85,8 +85,8 @@ app.layout = html.Div(
     style={
         'minHeight': '100vh',
         'backgroundColor': '#f7f9fa',
-        'fontFamily': 'Segoe UI, Arial, sans-serif',
-        'overflowY': 'auto'
+        'fontFamily': 'Segoe UI, Arial, sans-serif'
+        # 'overflowY': 'auto'  # <-- Remove this line
     },
     children=[
         # Header row with title and date slider
@@ -100,7 +100,10 @@ app.layout = html.Div(
                 'fontSize': '2rem',
                 'fontWeight': 'bold',
                 'letterSpacing': '1px',
-                'boxShadow': '0 2px 8px rgba(0,0,0,0.05)'
+                'boxShadow': '0 2px 8px rgba(0,0,0,0.05)',
+                'position': 'sticky',
+                'top': 0,  # <-- Set to 0 for true stickiness
+                'zIndex': 1000
             },
             children=[
                 html.Div(
