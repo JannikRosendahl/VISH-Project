@@ -455,14 +455,12 @@ def update_fatalities_line(date_range):
    Input('date-slider', 'value')
 )
 def update_fatalities_pie(date_range):
-    #start_ts, end_ts = date_range
-    #filtered = data[
-    #    (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-    #    (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    #]
-    #fatalities_by_sub_event = filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
-    fatalities_by_sub_event = data.groupby('sub_event_type')['fatalities'].sum().reset_index()
-    # cummulate groups with less than 1% of total fatalities together as "other"
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    fatalities_by_sub_event = filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
     total_fatalities = fatalities_by_sub_event['fatalities'].sum()
     other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
     if not other_group.empty:
@@ -472,7 +470,6 @@ def update_fatalities_pie(date_range):
         fatalities_by_sub_event = pd.concat(
             [fatalities_by_sub_event[~fatalities_by_sub_event['sub_event_type'].isin(other_group['sub_event_type'])],
              other_group_row])
-    # Sort the DataFrame by fatalities in descending order
     fatalities_by_sub_event = fatalities_by_sub_event.sort_values(by='fatalities', ascending=False)
 
     fig = px.pie(
