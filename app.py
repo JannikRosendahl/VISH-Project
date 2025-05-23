@@ -283,6 +283,7 @@ def render_map(color_mode):
                 color='fatalities',
                 color_continuous_scale=px.colors.sequential.matter,
                 zoom=5,
+                size='fatalities',
                 custom_data=['event_id_cnty'],
                 opacity=0.8,
                 labels={'fatalities': 'Fatalities'},
