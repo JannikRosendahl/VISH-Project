@@ -73,11 +73,11 @@ WIDGET_MIN_HEIGHT = 400
 
 # List of widget graph IDs (add or remove as needed)
 widget_graphs = [
-    ('events-by-source', 'Events by Source'),
-    ('event-type-bar', 'Event Type Bar'),
     ('fatalities-line', 'Fatalities Line'),
-    ('fatalities-pie', 'Fatalities Pie'),
     ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
+    ('fatalities-pie', 'Fatalities Pie'),
+    ('event-type-bar', 'Event Type Bar'),
+    ('events-by-source', 'Events by Source'),
     # Add more widget IDs here if needed
 ]
 
