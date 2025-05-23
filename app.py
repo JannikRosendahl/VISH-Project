@@ -41,7 +41,7 @@ maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 map_center = {}
 
 # map color modes
-color_modes = ['country', 'sub_event_type', 'event_date']
+color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']  # <-- Add 'fatalities' here
 # sub_event_type color map
 sub_event_type_color_map = {sub_event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, sub_event_type in enumerate(sorted(data['sub_event_type'].unique()))}
 
@@ -272,6 +272,20 @@ def render_map(color_mode):
                 custom_data=['event_id_cnty'],
                 opacity=1,
                 labels={'event_date_i': 'Event Date'},
+                center=map_center,
+            )
+        case 'fatalities':  # <-- Add this case
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='fatalities',
+                color_continuous_scale=px.colors.sequential.matter,
+                zoom=5,
+                custom_data=['event_id_cnty'],
+                opacity=0.8,
+                labels={'fatalities': 'Fatalities'},
                 center=map_center,
             )
         case _:
