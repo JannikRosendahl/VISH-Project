@@ -318,10 +318,10 @@ def update_notes(clickData):
     id = clickData['points'][0]['customdata'][0]
     point_data = data[data['event_id_cnty'] == id].iloc[0]
     return html.P(children=[
-        f'Date: {point_data['event_date']}', html.Br(),
-        f'Type: {point_data['sub_event_type']}', html.Br(),
-        f'Fatalities: {point_data['fatalities']}', html.Br(),
-        f'Notes: {point_data['notes']}', html.Br(),
+        html.B(children=['Date: ']), f'{point_data['event_date']}', html.Br(),
+        html.B(children=['Type: ']), f'{point_data['sub_event_type']}', html.Br(),
+        html.B(children=['Fatalities: ']), f'{point_data['fatalities']}', html.Br(),
+        html.B(children=['Notes: ']), f'{point_data['notes']}', html.Br(),
     ])
 
 @callback(Output('date-slider', 'marks'), Input('map', 'clickData'))
@@ -405,7 +405,7 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
     global data_filtered
     global map_center
     triggered_id = ctx.triggered_id
-    print(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}')
+    # print(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}')
     minTimestamp, maxTimestamp = interval
     data_filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
@@ -415,9 +415,9 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
         data_filtered = data_filtered[data_filtered['fatalities'] > 0]
 
     map = render_map(map_color_mode)
-    print(relayoutData)
+    # print(relayoutData)
     if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
-        print('trying to preserve map state')
+        # print('trying to preserve map state')
         map_center = relayoutData['map.center']
         map.update_layout(
             mapbox_center=relayoutData['map.center'],
