@@ -1,6 +1,7 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 
+from enum import unique
 import os
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
@@ -78,6 +79,7 @@ widget_graphs = [
     ('fatalities-pie', 'Fatalities Pie'),
     ('event-type-bar', 'Event Type Bar'),
     ('events-by-source', 'Events by Source'),
+    ('events-over-time', 'Events Over Time'),
     # Add more widget IDs here if needed
 ]
 
@@ -308,6 +310,24 @@ def render_map(color_mode):
     fig.update_traces(
         selected=dict(marker=dict(opacity=1)),
         unselected=dict(marker=dict(opacity=1))
+    )
+    return fig
+
+@callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
+def update_events_over_time(interval):
+    start_ts, end_ts = interval
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    unique_event_types = filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    fig = px.area(
+        unique_event_types,
+        x='event_date',
+        y='count',
+        color='sub_event_type',
+        title='Events Over Time',
+        labels={'event_date': 'Date', 'count': 'Number of Events'}
     )
     return fig
 
