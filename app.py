@@ -1,7 +1,5 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-
-from enum import unique
 import os
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
@@ -83,16 +81,19 @@ widget_graphs = [
     # Add more widget IDs here if needed
 ]
 
+app.title = 'Ukraine Dashboard'
+
 app.layout = html.Div(
     style={
         'minHeight': '100vh',
         'backgroundColor': '#f7f9fa',
-        'fontFamily': 'Segoe UI, Arial, sans-serif'
-        # 'overflowY': 'auto'  # <-- Remove this line
+        'fontFamily': 'Segoe UI, Arial, sans-serif',
+        'padding': '0',
+        'margin': '0',
     },
     children=[
         # Header row with title and date slider
-        html.Div(
+        html.Header(
             style={
                 'display': 'flex',
                 'alignItems': 'center',
@@ -130,7 +131,7 @@ app.layout = html.Div(
             ]
         ),
         # Main content area
-        html.Div(
+        html.Main(
             style={
                 'display': 'flex',
                 'minHeight': 'calc(100vh - 120px)',
@@ -184,15 +185,7 @@ app.layout = html.Div(
                 ),
                 # Main plots area
                 html.Div(
-                    style={
-                        'flex': 1,
-                        'display': 'grid',
-                        'gridTemplateColumns': f'repeat({WIDGET_COLS}, 1fr)',
-                        'gridTemplateRows': f'auto repeat({WIDGET_ROWS}, 1fr)',  # Map row auto, widgets fill space
-                        'gap': '1.5rem',
-                        'minWidth': '0',
-                        #'height': '100%'  # Make grid fill available vertical space
-                    },
+                    id='main-plots',
                     children=[
                         # Map spans all columns on the first row
                         html.Div(
@@ -202,7 +195,7 @@ app.layout = html.Div(
                                 'borderRadius': '12px',
                                 'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
                                 'padding': '1rem',
-                                f'gridColumn': f'1 / span {WIDGET_COLS}',
+                                'gridColumn': f'1 / span {WIDGET_COLS}',
                                 'gridRow': '1',
                                 'minHeight': f'{MAP_MIN_HEIGHT}px'
                             }
@@ -211,6 +204,7 @@ app.layout = html.Div(
                         *[
                             html.Div(
                                 dcc.Graph(id=widget_id, style={'height': '100%', 'width': '100%'}),
+                                className='widget',
                                 style={
                                     'backgroundColor': 'white',
                                     'borderRadius': '12px',
@@ -247,7 +241,8 @@ def render_map(color_mode):
                 zoom=5,
                 custom_data=['event_id_cnty'],
                 opacity=1,
-                center=map_center
+                center=map_center,
+                height=600
             )
         case 'sub_event_type':
             fig = px.scatter_map(
@@ -261,6 +256,7 @@ def render_map(color_mode):
                 custom_data=['event_id_cnty'],
                 opacity=1,
                 center=map_center,
+                height=600
             )
         case 'event_date':
             fig = px.scatter_map(
@@ -275,6 +271,7 @@ def render_map(color_mode):
                 opacity=1,
                 labels={'event_date_i': 'Event Date'},
                 center=map_center,
+                height=600
             )
         case 'fatalities':  # <-- Add this case
             fig = px.scatter_map(
@@ -290,6 +287,7 @@ def render_map(color_mode):
                 opacity=0.8,
                 labels={'fatalities': 'Fatalities'},
                 center=map_center,
+                height=600
             )
         case _:
             print('Invalid color mode, defaulting to country')
@@ -304,9 +302,12 @@ def render_map(color_mode):
                 custom_data=['event_id_cnty'],
                 opacity=1,
                 center=map_center,
+                height=600
             )
     fig.update_layout(
-        clickmode='event+select'
+        clickmode='event+select',
+        margin=dict(t=0, b=0, l=0, r=0),
+        autosize=False
     )
     fig.update_traces(
         selected=dict(marker=dict(opacity=1)),
