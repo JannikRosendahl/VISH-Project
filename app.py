@@ -229,6 +229,16 @@ def render_map(color_mode):
     global data_filtered
     global map_center
 
+    hovertemplate = (
+        "<b>🌍 Country:</b> %{customdata[1]}<br>"
+        "<b>⚠️ Sub-Event-Type:</b> %{customdata[2]}<br>"
+        "<b>👤 Actor 1:</b> %{customdata[3]}<br>"
+        "<b>👤 Actor 2:</b> %{customdata[4]}<br>"
+        "<b>🪦 Fatalities:</b> %{customdata[5]}<extra></extra>"
+    )
+
+    custom_data = ['event_id_cnty', 'country', 'sub_event_type', 'actor1', 'actor2', 'fatalities']
+
     match color_mode:
         case 'country':
             fig = px.scatter_map(
@@ -239,7 +249,7 @@ def render_map(color_mode):
                 color='country',
                 color_discrete_map=country_color_map,
                 zoom=5,
-                custom_data=['event_id_cnty'],
+                custom_data=custom_data,
                 opacity=1,
                 center=map_center,
                 height=600
@@ -253,7 +263,7 @@ def render_map(color_mode):
                 color='sub_event_type',
                 color_discrete_map=sub_event_type_color_map,
                 zoom=5,
-                custom_data=['event_id_cnty'],
+                custom_data=custom_data,
                 opacity=1,
                 center=map_center,
                 height=600
@@ -267,7 +277,7 @@ def render_map(color_mode):
                 color='event_date_i',
                 color_continuous_scale=px.colors.sequential.Plasma,
                 zoom=5,
-                custom_data=['event_id_cnty'],
+                custom_data=custom_data,
                 opacity=1,
                 labels={'event_date_i': 'Event Date'},
                 center=map_center,
@@ -283,7 +293,7 @@ def render_map(color_mode):
                 color_continuous_scale=px.colors.sequential.matter,
                 zoom=5,
                 size='fatalities',
-                custom_data=['event_id_cnty'],
+                custom_data=custom_data,
                 opacity=0.8,
                 labels={'fatalities': 'Fatalities'},
                 center=map_center,
@@ -299,7 +309,7 @@ def render_map(color_mode):
                 color='country',
                 color_discrete_map=country_color_map,
                 zoom=5,
-                custom_data=['event_id_cnty'],
+                custom_data=custom_data,
                 opacity=1,
                 center=map_center,
                 height=600
@@ -311,7 +321,8 @@ def render_map(color_mode):
     )
     fig.update_traces(
         selected=dict(marker=dict(opacity=1)),
-        unselected=dict(marker=dict(opacity=1))
+        unselected=dict(marker=dict(opacity=1)),
+        hovertemplate = hovertemplate
     )
     return fig
 
