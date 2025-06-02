@@ -232,12 +232,13 @@ def render_map(color_mode):
     hovertemplate = (
         "<b>🌍 Country:</b> %{customdata[1]}<br>"
         "<b>⚠️ Sub-Event-Type:</b> %{customdata[2]}<br>"
-        "<b>👤 Actor 1:</b> %{customdata[3]}<br>"
-        "<b>👤 Actor 2:</b> %{customdata[4]}<br>"
-        "<b>🪦 Fatalities:</b> %{customdata[5]}<extra></extra>"
+        "<b>📅 Date:</b> %{customdata[3]}<br>"
+        "<b>👤 Actor 1:</b> %{customdata[4]}<br>"
+        "<b>👤 Actor 2:</b> %{customdata[5]}<br>"
+        "<b>🪦 Fatalities:</b> %{customdata[6]}<extra></extra>"
     )
+    custom_data = ['event_id_cnty', 'country', 'sub_event_type', 'event_date', 'actor1', 'actor2', 'fatalities']
 
-    custom_data = ['event_id_cnty', 'country', 'sub_event_type', 'actor1', 'actor2', 'fatalities']
 
     match color_mode:
         case 'country':
