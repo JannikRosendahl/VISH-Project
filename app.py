@@ -1,7 +1,10 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
+from ast import Call
 import os
+from turtle import st
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
+from numpy import size
 import plotly.express as px
 import pandas as pd
 
@@ -63,7 +66,7 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
 # Configurable number of rows and columns for bottom widgets
-WIDGET_ROWS = 3
+WIDGET_ROWS = 4
 WIDGET_COLS = 2
 
 # Configurable minimum heights (in px)
@@ -76,9 +79,10 @@ widget_graphs = [
     ('fatalities-line', 'Fatalities Line'),
     ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
     ('fatalities-pie', 'Fatalities Pie'),
+    ('event-type-pie', 'Event Type Pie'),
     ('event-type-bar', 'Event Type Bar'),
     ('events-by-source', 'Events by Source'),
-    ('events-over-time', 'Events Over Time'),
+    ('events-over-time', 'Events Over Time')
     # Add more widget IDs here if needed
 ]
 
@@ -329,6 +333,26 @@ def render_map(color_mode):
     )
     return fig
 
+@callback(Output('event-type-pie', 'figure'), Input('date-slider', 'value'))
+def update_event_type_pie(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    event_counts = filtered['event_type'].value_counts().reset_index()
+    event_counts.columns = ['event_type', 'count']
+    fig = px.pie(
+        event_counts,
+        values='count',
+        names='event_type',
+        title='Percentage of Total Events by Event Type',
+        labels={'event_type': 'Event Type', 'count': 'Number of Events'},
+        color='event_type',
+        color_discrete_map={et: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, et in enumerate(event_counts['event_type'])}
+    )
+    return fig
+
 @callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time(interval):
     start_ts, end_ts = interval
@@ -337,13 +361,14 @@ def update_events_over_time(interval):
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
     ]
     unique_event_types = filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
-    fig = px.area(
+    fig = px.line(
         unique_event_types,
         x='event_date',
         y='count',
+        line_group='sub_event_type',
         color='sub_event_type',
         title='Events Over Time',
-        labels={'event_date': 'Date', 'count': 'Number of Events'}
+        labels={'event_date': 'Date', 'count': 'Number of Events'},
     )
     return fig
 
@@ -371,16 +396,20 @@ def update_date_slider(clickData):
     markers[int(pd.Timestamp(date).timestamp())] = { 'label': date.strftime('|'),'style': {"color": "blue", "fontSize": "60px", "transform": "translate(0, -35px)" } }
     return markers 
 
-
-def render_events_by_source():
-    global data_filtered
+@callback(Output('events-by-source', 'figure'), Input('date-slider', 'value'))
+def render_events_by_source(interval):
+    start_ts, end_ts = interval
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
     # Count events per source
     top_sources = (
-        data_filtered.groupby(['source']).size()
+        filtered.groupby(['source']).size()
         .nlargest(5)
         .index.tolist()
     )
-    filtered_top = data_filtered[data_filtered['source'].isin(top_sources)]
+    filtered_top = filtered[filtered['source'].isin(top_sources)]
     source_event_counts = (
         filtered_top.groupby(['source', 'sub_event_type'])
         .size()
@@ -406,9 +435,14 @@ def render_events_by_source():
     )
     return fig
 
-def render_event_type_bar():
-    global data_filtered
-    event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
+@callback(Output('event-type-bar', 'figure'), Input('date-slider', 'value'))
+def render_event_type_bar(interval):
+    start_ts, end_ts = interval
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    event_counts = filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
     fig = px.bar(
         event_counts,
         x='event_type',
@@ -428,8 +462,6 @@ def render_time_interval(minTimestamp, maxTimestamp):
 
 @callback([
     Output('map', 'figure'),
-    Output('events-by-source', 'figure'),
-    Output('event-type-bar', 'figure'),
     Output('date-slider-output', 'children')
 ], [
     Input('date-slider', 'value'),
@@ -460,20 +492,16 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
             mapbox_zoom=relayoutData['map.zoom']
         )
 
-    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
+    return map, render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
-@callback(
-   Output('fatalities-line', 'figure'),
-   Input('date-slider', 'value')
-)
-def update_fatalities_line(date_range):
-    start_ts, end_ts = date_range
+@callback(Output('fatalities-line', 'figure'), Input('date-slider', 'value'))
+def update_fatalities_line(interval):
+    start_ts, end_ts = interval
     filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
     ]
-
     fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fatalities_by_date['fatalities'] = fatalities_by_date['fatalities'].cumsum()
     fig = px.line(
@@ -490,13 +518,12 @@ def update_fatalities_line(date_range):
    Output('fatalities-line-non-cumulative', 'figure'),
    Input('date-slider', 'value')
 )
-def update_fatalities_line_non_cumulative(date_range):
-    start_ts, end_ts = date_range
+def update_fatalities_line_non_cumulative(interval):
+    start_ts, end_ts = interval
     filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
     ]
-
     fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fig = px.line(
         fatalities_by_date,
@@ -512,8 +539,8 @@ def update_fatalities_line_non_cumulative(date_range):
    Output('fatalities-pie', 'figure'),
    Input('date-slider', 'value')
 )
-def update_fatalities_pie(date_range):
-    start_ts, end_ts = date_range
+def update_fatalities_pie(interval):
+    start_ts, end_ts = interval
     filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
@@ -542,12 +569,9 @@ def update_fatalities_pie(date_range):
     return fig
 
 # Add callback for sub_event_type stacked line chart
-@callback(
-    Output('subeventtype-line', 'figure'),
-    Input('date-slider', 'value')
-)
-def update_subeventtype_line(date_range):
-    start_ts, end_ts = date_range
+@callback(Output('subeventtype-line', 'figure'), Input('date-slider', 'value'))
+def update_subeventtype_line(interval):
+    start_ts, end_ts = interval
     filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
@@ -572,4 +596,4 @@ def update_subeventtype_line(date_range):
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=True)
