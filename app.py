@@ -1,15 +1,11 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-from ast import Call
 import os
-from turtle import st
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
-from numpy import size
 import plotly.express as px
 import pandas as pd
 
 app = Dash()
-
 
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
@@ -45,7 +41,9 @@ map_center = {}
 # map color modes
 color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']  # <-- Add 'fatalities' here
 # sub_event_type color map
-sub_event_type_color_map = {sub_event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, sub_event_type in enumerate(sorted(data['sub_event_type'].unique()))}
+sub_event_type_color_map = {set: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, set in enumerate(sorted(data['sub_event_type'].unique()))}
+# event_type color map
+event_type_color_map = {et: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, et in enumerate(sorted(data['event_type'].unique()))}
 
 # country color map
 country_palette = px.colors.qualitative.Alphabet
@@ -348,7 +346,7 @@ def update_event_type_pie(date_range):
         names='event_type',
         title='Percentage of Total Events by Event Type',
         labels={'event_type': 'Event Type', 'count': 'Number of Events'},
-        color='event_type',
+        color=event_type_color_map,
         color_discrete_map={et: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, et in enumerate(event_counts['event_type'])}
     )
     return fig
@@ -367,6 +365,7 @@ def update_events_over_time(interval):
         y='count',
         line_group='sub_event_type',
         color='sub_event_type',
+        color_discrete_map=sub_event_type_color_map,
         title='Events Over Time',
         labels={'event_date': 'Date', 'count': 'Number of Events'},
     )
