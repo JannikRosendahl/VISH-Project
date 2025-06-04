@@ -4,6 +4,7 @@ import os
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
 import pandas as pd
+import json
 
 app = Dash()
 
@@ -329,6 +330,55 @@ def render_map(color_mode):
     )
     return fig
 
+
+def render_choropleth_map():
+    # Filter Daten: Keine Proteste
+    filtered = data[data['event_type'] != 'Protests']
+    filtered = data[data['country'] == 'Ukraine']
+
+    # Gruppieren nach Region
+    region_data = (
+        filtered.groupby('admin1')
+        .agg(
+            event_count=('event_id_cnty', 'count'),
+            dominant_event_type=('event_type', lambda x: x.value_counts().idxmax())
+        )
+        .reset_index()
+    )
+
+    # Sättigungsstufen definieren
+    max_events = region_data['event_count'].max()
+    region_data['saturation'] = pd.cut(
+        region_data['event_count'],
+        bins=[0, max_events * 0.25, max_events * 0.5, max_events * 0.75, max_events],
+        labels=['Low', 'Medium', 'High', 'Very High']
+    )
+
+    # GeoJSON-Dateien laden
+    with open('data/ukraine_geojson/UA_FULL_Ukraine.geojson', 'r') as f:
+        ukraine_geojson = json.load(f)
+    russia_geojson_directory = 'data/russia_geojson/'
+    russia_geojson_files = load_geojson_files(russia_geojson_directory)
+
+    # Choroplethenkarte erstellen
+    fig = px.choropleth(
+        region_data,
+        geojson=ukraine_geojson,  # Kombinieren Sie GeoJSONs, falls nötig
+        locations='admin1',
+        featureidkey='properties.admin1',  # Passen Sie den Schlüssel an Ihre GeoJSON-Daten an
+        color='dominant_event_type',
+        color_discrete_map=sub_event_type_color_map,
+        hover_name='admin1',
+        hover_data={'event_count': True, 'saturation': True},
+        title='Ereignisse pro Region (ohne Proteste)',
+    )
+
+    # Layout anpassen
+    fig.update_geos(fitbounds="locations", visible=False)
+    fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+
+    return fig
+
 @callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time(interval):
     start_ts, end_ts = interval
@@ -346,6 +396,15 @@ def update_events_over_time(interval):
         labels={'event_date': 'Date', 'count': 'Number of Events'}
     )
     return fig
+
+def load_geojson_files(directory):
+    geojson_data = {}
+    for filename in os.listdir(directory):
+        if filename.endswith('.geojson'):
+            filepath = os.path.join(directory, filename)
+            with open(filepath, 'r') as f:
+                geojson_data[filename] = json.load(f)
+    return geojson_data
 
 @callback(Output('notes', 'children'), Input('map', 'clickData'))
 def update_notes(clickData):
