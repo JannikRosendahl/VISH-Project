@@ -72,6 +72,7 @@ WIDGET_MIN_HEIGHT = 400
 
 # List of widget graph IDs (add or remove as needed)
 widget_graphs = [
+    ('fatalities-line-non-cumulative', 'Fatalities Per Day'),
     ('fatalities-line', 'Fatalities Line'),
     ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
     ('fatalities-pie', 'Fatalities Pie'),
@@ -479,6 +480,28 @@ def update_fatalities_line(date_range):
         x='event_date',
         y='fatalities',
         title='Fatalities Over Time',
+        labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
+    )
+    return fig
+
+# add callback for non-cumulative fatalities line chart
+@callback(
+   Output('fatalities-line-non-cumulative', 'figure'),
+   Input('date-slider', 'value')
+)
+def update_fatalities_line_non_cumulative(date_range):
+    start_ts, end_ts = date_range
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+
+    fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
+    fig = px.line(
+        fatalities_by_date,
+        x='event_date',
+        y='fatalities',
+        title='Fatalities Per Day',
         labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
     )
     return fig
