@@ -1,8 +1,6 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-from ast import Call
 import os
-from turtle import st
 from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 from numpy import size
 import plotly.express as px
