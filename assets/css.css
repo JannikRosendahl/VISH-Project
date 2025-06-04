@@ -20,12 +20,12 @@ body {
 
 @media screen and (min-width: 1920px) {
   #main-plots {
-    flex: 1;
     display: grid;
     grid-template-columns: repeat(var(--cols), 1fr);
     grid-template-rows: auto repeat(var(--rows), 1fr);
     gap : 1.5rem;
-    min-width: 0;
+    max-width: 100vw;
+    max-height: 100vh;
   }
 }
 

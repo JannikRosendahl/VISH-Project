@@ -186,10 +186,11 @@ app.layout = html.Div(
                 # Main plots area
                 html.Div(
                     id='main-plots',
+                    style={'max-height': '100vh', 'max-width': '100vw'},
                     children=[
                         # Map spans all columns on the first row
                         html.Div(
-                            dcc.Graph(id='map', clear_on_unhover=True, style={'height': '100%', 'width': '100%'}),
+                            dcc.Graph(id='map', clear_on_unhover=True, style={}),
                             style={
                                 'backgroundColor': 'white',
                                 'borderRadius': '12px',
@@ -548,4 +549,4 @@ def update_subeventtype_line(date_range):
     return fig
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
