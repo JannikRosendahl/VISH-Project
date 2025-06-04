@@ -295,7 +295,7 @@ def render_map(color_mode):
                 lon='longitude',
                 hover_data=['fatalities'],
                 color='fatalities',
-                color_continuous_scale=px.colors.sequential.matter,
+                color_continuous_scale=px.colors.sequential.Bluered,
                 zoom=5,
                 size='fatalities',
                 custom_data=custom_data,
