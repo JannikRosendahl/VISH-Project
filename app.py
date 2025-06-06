@@ -5,6 +5,7 @@ from dash import Dash, State, html, dcc, Input, Output, callback, ctx
 import plotly.express as px
 import pandas as pd
 import json
+import chardet
 
 app = Dash()
 
@@ -203,6 +204,19 @@ app.layout = html.Div(
                                 'minHeight': f'{MAP_MIN_HEIGHT}px'
                             }
                         ),
+                        html.Div(
+                            dcc.Graph(id='choropleth-map', style={'height': '100%', 'width': '100%'}),
+                            className='widget',
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': f'{(len(widget_graphs) % WIDGET_COLS) + 1}',
+                                'gridRow': f'{(len(widget_graphs) // WIDGET_COLS) + 2}',
+                                'minHeight': f'{WIDGET_MIN_HEIGHT}px',
+                            }
+                        ),
                         # Dynamically generate widgets for the bottom area
                         *[
                             html.Div(
@@ -334,7 +348,6 @@ def render_map(color_mode):
 def render_choropleth_map():
     # Filter Daten: Keine Proteste
     filtered = data[data['event_type'] != 'Protests']
-    filtered = data[data['country'] == 'Ukraine']
 
     # Gruppieren nach Region
     region_data = (
@@ -355,17 +368,18 @@ def render_choropleth_map():
     )
 
     # GeoJSON-Dateien laden
-    with open('data/ukraine_geojson/UA_FULL_Ukraine.geojson', 'r') as f:
-        ukraine_geojson = json.load(f)
+
     russia_geojson_directory = 'data/russia_geojson/'
-    russia_geojson_files = load_geojson_files(russia_geojson_directory)
+    ukraine_geojson_file = 'geodata/ukraine_geojson/UA_FULL_Ukraine.geojson'
+    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_file, russia_geojson_directory)
+    print(geojson_files)
 
     # Choroplethenkarte erstellen
     fig = px.choropleth(
         region_data,
-        geojson=ukraine_geojson,  # Kombinieren Sie GeoJSONs, falls nötig
+        geojson=geojson_files,  # Kombinieren Sie GeoJSONs, falls nötig
         locations='admin1',
-        featureidkey='properties.admin1',  # Passen Sie den Schlüssel an Ihre GeoJSON-Daten an
+        featureidkey='id',  # Passen Sie den Schlüssel an Ihre GeoJSON-Daten an
         color='dominant_event_type',
         color_discrete_map=sub_event_type_color_map,
         hover_name='admin1',
@@ -378,6 +392,36 @@ def render_choropleth_map():
     fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
 
     return fig
+
+def load_geojson_files_with_featureid(filepath, directory):
+    geojson_data = {}
+
+    # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
+    def load_file_with_encoding(file_path):
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+            result = chardet.detect(raw_data)  # Kodierung erkennen
+            encoding = result['encoding']
+        with open(file_path, 'r', encoding=encoding) as f:
+            return json.load(f)
+
+    # Ukraine GeoJSON laden
+    fp = load_file_with_encoding(filepath)
+    for feature in fp.get('Feature', []):
+        feature_id = feature['properties']['name:en'].split()[0]
+        feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
+    geojson_data[feature_id] = fp
+
+    # Russland GeoJSONs laden
+    for filename in os.listdir(directory):
+        if filename.endswith('.geojson'):
+            dir = load_file_with_encoding(os.path.join(directory, filename))
+            for feature in dir.get('Feature', []):
+                feature_id = feature['properties']['name_latin'].split()[0]
+                feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
+            geojson_data[feature_id] = dir
+
+    return geojson_data
 
 @callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time(interval):
@@ -396,15 +440,6 @@ def update_events_over_time(interval):
         labels={'event_date': 'Date', 'count': 'Number of Events'}
     )
     return fig
-
-def load_geojson_files(directory):
-    geojson_data = {}
-    for filename in os.listdir(directory):
-        if filename.endswith('.geojson'):
-            filepath = os.path.join(directory, filename)
-            with open(filepath, 'r') as f:
-                geojson_data[filename] = json.load(f)
-    return geojson_data
 
 @callback(Output('notes', 'children'), Input('map', 'clickData'))
 def update_notes(clickData):
@@ -489,7 +524,8 @@ def render_time_interval(minTimestamp, maxTimestamp):
     Output('map', 'figure'),
     Output('events-by-source', 'figure'),
     Output('event-type-bar', 'figure'),
-    Output('date-slider-output', 'children')
+    Output('date-slider-output', 'children'),
+    Output('choropleth-map', 'figure')
 ], [
     Input('date-slider', 'value'),
     Input('map-color-selector', 'value'),
@@ -519,7 +555,9 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
             mapbox_zoom=relayoutData['map.zoom']
         )
 
-    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
+    choropleth_map = render_choropleth_map()
+
+    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp), choropleth_map
 
 # add callback for fatalities line chart
 @callback(
