@@ -6,6 +6,7 @@ import plotly.express as px
 import pandas as pd
 import json
 import chardet
+import copy
 
 app = Dash()
 
@@ -45,7 +46,8 @@ map_center = {}
 color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']  # <-- Add 'fatalities' here
 # sub_event_type color map
 sub_event_type_color_map = {sub_event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, sub_event_type in enumerate(sorted(data['sub_event_type'].unique()))}
-
+# event_type color map
+event_type_color_map = {event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, event_type in enumerate(sorted(data['event_type'].unique()))}
 # country color map
 country_palette = px.colors.qualitative.Alphabet
 countries = sorted(data['country'].unique())
@@ -347,8 +349,12 @@ def render_map(color_mode):
 
 def render_choropleth_map():
     # Filter Daten: Keine Proteste
-    filtered = data[data['event_type'] != 'Protests']
-
+    filtered = data[
+        (data['event_type'] != 'Protests') &
+        (data['event_type'] != 'Riots') &
+        (data['event_type'] != 'Strategic developments')
+        ]
+    filtered = filtered[filtered['country'].isin(['Ukraine', 'Russia'])]
     # Gruppieren nach Region
     region_data = (
         filtered.groupby('admin1')
@@ -369,32 +375,35 @@ def render_choropleth_map():
 
     # GeoJSON-Dateien laden
 
-    russia_geojson_directory = 'data/russia_geojson/'
-    ukraine_geojson_file = 'geodata/ukraine_geojson/UA_FULL_Ukraine.geojson'
-    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_file, russia_geojson_directory)
-    print(geojson_files)
+    russia_geojson_directory = 'geodata/russia_geojson/'
+    ukraine_geojson_directory = 'geodata/ukraine_geojson/'
+    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory, russia_geojson_directory)
+    # geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory)
+    merged_geojson = merge_geojsons(geojson_files)
+    # print(geojson_files)
 
     # Choroplethenkarte erstellen
-    fig = px.choropleth(
+    fig = px.choropleth_mapbox(
         region_data,
-        geojson=geojson_files,  # Kombinieren Sie GeoJSONs, falls nötig
+        geojson=merged_geojson,
         locations='admin1',
-        featureidkey='id',  # Passen Sie den Schlüssel an Ihre GeoJSON-Daten an
+        featureidkey='id',
         color='dominant_event_type',
-        color_discrete_map=sub_event_type_color_map,
+        color_discrete_map=event_type_color_map,
         hover_name='admin1',
         hover_data={'event_count': True, 'saturation': True},
         title='Ereignisse pro Region (ohne Proteste)',
+        mapbox_style="carto-positron",
+        center={"lat": 49, "lon": 32},
+        zoom=3.5
     )
-
-    # Layout anpassen
-    fig.update_geos(fitbounds="locations", visible=False)
     fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
 
     return fig
 
-def load_geojson_files_with_featureid(filepath, directory):
+def load_geojson_files_with_featureid(dir_ua, dir_ru):
     geojson_data = {}
+    print("Loading GeoJSON files from directories:", dir_ua, "and", dir_ru)
 
     # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
     def load_file_with_encoding(file_path):
@@ -405,23 +414,45 @@ def load_geojson_files_with_featureid(filepath, directory):
         with open(file_path, 'r', encoding=encoding) as f:
             return json.load(f)
 
-    # Ukraine GeoJSON laden
-    fp = load_file_with_encoding(filepath)
-    for feature in fp.get('Feature', []):
-        feature_id = feature['properties']['name:en'].split()[0]
-        feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
-    geojson_data[feature_id] = fp
+    # Ukraine GeoJSONs laden
+    for filename in os.listdir(dir_ua):
+        if filename.endswith('.geojson'):
+            f = load_file_with_encoding(os.path.join(dir_ua, filename))
+            features = [f]
+            for feature in features:
+                name = feature['properties']['name:en']
+                feature['properties']['name:en'] = name.replace('Oblast', '').strip()
+                feature_id = feature['properties']['name:en']
+                feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
+            geojson_data[filename] = f
 
     # Russland GeoJSONs laden
-    for filename in os.listdir(directory):
+    for filename in os.listdir(dir_ru):
         if filename.endswith('.geojson'):
-            dir = load_file_with_encoding(os.path.join(directory, filename))
-            for feature in dir.get('Feature', []):
-                feature_id = feature['properties']['name_latin'].split()[0]
-                feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
-            geojson_data[feature_id] = dir
+            d = load_file_with_encoding(os.path.join(dir_ru, filename))
+            for feature in d.get('features', []):
+                name = feature['properties']['name_latin']
+                # Remove 'Oblast' and strip whitespace
+                if name != 'Jewish Autonomous Oblast':
+                    feature['properties']['name_latin'] = name.replace('Oblast', '').strip()
+                feature_id = feature['properties']['name_latin']
+                feature['id'] = feature_id  # Setze die ID basierend auf "name_latin"
+            geojson_data[filename] = d
 
     return geojson_data
+
+def merge_geojsons(geojson_dict):
+    merged = {
+        "type": "FeatureCollection",
+        "features": []
+    }
+    for g in geojson_dict.values():
+        if "features" in g:
+            merged["features"].extend(copy.deepcopy(g["features"]))
+        elif g.get("type") == "Feature":
+            merged["features"].append(copy.deepcopy(g))
+    return merged
+
 
 @callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time(interval):
