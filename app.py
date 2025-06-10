@@ -44,6 +44,7 @@ map_center = {}
 
 # map color modes
 color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']  # <-- Add 'fatalities' here
+choropleth_color_modes = ['Battles', 'Explosions/Remote violence', 'Protests', 'Riots', 'Strategic developments', 'Violence against civilians']
 # sub_event_type color map
 sub_event_type_color_map = {sub_event_type: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, sub_event_type in enumerate(sorted(data['sub_event_type'].unique()))}
 # event_type color map
@@ -76,6 +77,7 @@ WIDGET_MIN_HEIGHT = 400
 
 # List of widget graph IDs (add or remove as needed)
 widget_graphs = [
+    ('choropleth-map', 'Choropleth Map'),
     ('fatalities-line-non-cumulative', 'Fatalities Per Day'),
     ('fatalities-line', 'Fatalities Line'),
     ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
@@ -186,6 +188,13 @@ app.layout = html.Div(
                                 'minHeight': '80px'
                             }
                         ),
+                        html.Div([
+                            html.Label('Coropleth Map Color Options', style={'fontWeight': 'bold'}),
+                            dcc.RadioItems(
+                                choropleth_color_modes, choropleth_color_modes[0], inline=True, id='map-color-selector',
+                                style={'marginTop': '0.5rem'}
+                            ),
+                        ]),
                     ]
                 ),
                 # Main plots area
@@ -204,19 +213,6 @@ app.layout = html.Div(
                                 'gridColumn': f'1 / span {WIDGET_COLS}',
                                 'gridRow': '1',
                                 'minHeight': f'{MAP_MIN_HEIGHT}px'
-                            }
-                        ),
-                        html.Div(
-                            dcc.Graph(id='choropleth-map', style={'height': '100%', 'width': '100%'}),
-                            className='widget',
-                            style={
-                                'backgroundColor': 'white',
-                                'borderRadius': '12px',
-                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                'padding': '1rem',
-                                'gridColumn': f'{(len(widget_graphs) % WIDGET_COLS) + 1}',
-                                'gridRow': f'{(len(widget_graphs) // WIDGET_COLS) + 2}',
-                                'minHeight': f'{WIDGET_MIN_HEIGHT}px',
                             }
                         ),
                         # Dynamically generate widgets for the bottom area
@@ -346,64 +342,49 @@ def render_map(color_mode):
     )
     return fig
 
-
-def render_choropleth_map():
-    # Filter Daten: Keine Proteste
-    filtered = data[
-        (data['event_type'] != 'Protests') &
-        (data['event_type'] != 'Riots') &
-        (data['event_type'] != 'Strategic developments')
-        ]
-    filtered = filtered[filtered['country'].isin(['Ukraine', 'Russia'])]
+@callback(Output('choropleth-map', 'figure'), Input('event_type_selector', 'value'))
+def display_choropleth(event_type_selector):
+    global data_filtered
+    
+    filtered = data_filtered[data_filtered['country'].isin(['Ukraine'])]
     # Gruppieren nach Region
-    region_data = (
-        filtered.groupby('admin1')
-        .agg(
-            event_count=('event_id_cnty', 'count'),
-            dominant_event_type=('event_type', lambda x: x.value_counts().idxmax())
-        )
-        .reset_index()
-    )
+    # Create a pivot table: rows = admin1, columns = event_type, values = event counts
+    admin1_event_counts = pd.pivot_table(
+        filtered,
+        index='admin1',
+        columns='event_type',
+        values='event_id_cnty',  # or any column, since we use 'count'
+        aggfunc='count',
+        fill_value=0
+    ).reset_index()
 
-    # Sättigungsstufen definieren
-    max_events = region_data['event_count'].max()
-    region_data['saturation'] = pd.cut(
-        region_data['event_count'],
-        bins=[0, max_events * 0.25, max_events * 0.5, max_events * 0.75, max_events],
-        labels=['Low', 'Medium', 'High', 'Very High']
-    )
+    # max event count for color range
+    max_event_count = admin1_event_counts[event_type_selector].max()
 
     # GeoJSON-Dateien laden
 
-    russia_geojson_directory = 'geodata/russia_geojson/'
     ukraine_geojson_directory = 'geodata/ukraine_geojson/'
-    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory, russia_geojson_directory)
-    # geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory)
+    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory)
     merged_geojson = merge_geojsons(geojson_files)
-    # print(geojson_files)
 
-    # Choroplethenkarte erstellen
-    fig = px.choropleth_mapbox(
-        region_data,
+
+    fig = px.choropleth(
+        admin1_event_counts,
         geojson=merged_geojson,
-        locations='admin1',
-        featureidkey='id',
-        color='dominant_event_type',
-        color_discrete_map=event_type_color_map,
-        hover_name='admin1',
-        hover_data={'event_count': True, 'saturation': True},
-        title='Ereignisse pro Region (ohne Proteste)',
-        mapbox_style="carto-positron",
-        center={"lat": 49, "lon": 32},
-        zoom=3.5
+        color=event_type_selector,
+        locations="admin1",
+        featureidkey="id",
+        projection="mercator",
+        range_color=[0, max_event_count]
     )
-    fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
 
+    fig.update_geos(fitbounds="locations", visible=False)
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     return fig
 
-def load_geojson_files_with_featureid(dir_ua, dir_ru):
+def load_geojson_files_with_featureid(dir):
     geojson_data = {}
-    print("Loading GeoJSON files from directories:", dir_ua, "and", dir_ru)
+    print("Loading GeoJSON files from directory:", dir)
 
     # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
     def load_file_with_encoding(file_path):
@@ -415,29 +396,22 @@ def load_geojson_files_with_featureid(dir_ua, dir_ru):
             return json.load(f)
 
     # Ukraine GeoJSONs laden
-    for filename in os.listdir(dir_ua):
+    for filename in os.listdir(dir):
         if filename.endswith('.geojson'):
-            f = load_file_with_encoding(os.path.join(dir_ua, filename))
+            f = load_file_with_encoding(os.path.join(dir, filename))
             features = [f]
             for feature in features:
                 name = feature['properties']['name:en']
+                if name == 'Kiev Oblast':
+                    name = 'Kyiv'
+                if name == 'Odessa Oblast':
+                    name = 'Odesa'
+                if name == 'Autonomous Republic of Crimea':
+                    name = 'Crimea'
                 feature['properties']['name:en'] = name.replace('Oblast', '').strip()
                 feature_id = feature['properties']['name:en']
                 feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
             geojson_data[filename] = f
-
-    # Russland GeoJSONs laden
-    for filename in os.listdir(dir_ru):
-        if filename.endswith('.geojson'):
-            d = load_file_with_encoding(os.path.join(dir_ru, filename))
-            for feature in d.get('features', []):
-                name = feature['properties']['name_latin']
-                # Remove 'Oblast' and strip whitespace
-                if name != 'Jewish Autonomous Oblast':
-                    feature['properties']['name_latin'] = name.replace('Oblast', '').strip()
-                feature_id = feature['properties']['name_latin']
-                feature['id'] = feature_id  # Setze die ID basierend auf "name_latin"
-            geojson_data[filename] = d
 
     return geojson_data
 
@@ -586,9 +560,7 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
             mapbox_zoom=relayoutData['map.zoom']
         )
 
-    choropleth_map = render_choropleth_map()
-
-    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp), choropleth_map
+    return map, render_events_by_source(), render_event_type_bar(), render_time_interval(minTimestamp, maxTimestamp)
 
 # add callback for fatalities line chart
 @callback(
