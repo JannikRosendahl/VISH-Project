@@ -77,7 +77,6 @@ WIDGET_MIN_HEIGHT = 400
 
 # List of widget graph IDs (add or remove as needed)
 widget_graphs = [
-    ('choropleth-map', 'Choropleth Map'),
     ('fatalities-line-non-cumulative', 'Fatalities Per Day'),
     ('fatalities-line', 'Fatalities Line'),
     ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
@@ -85,6 +84,7 @@ widget_graphs = [
     ('event-type-bar', 'Event Type Bar'),
     ('events-by-source', 'Events by Source'),
     ('events-over-time', 'Events Over Time'),
+    #('choropleth-map', 'Choropleth Map Widget'),
     # Add more widget IDs here if needed
 ]
 
@@ -188,13 +188,6 @@ app.layout = html.Div(
                                 'minHeight': '80px'
                             }
                         ),
-                        html.Div([
-                            html.Label('Coropleth Map Color Options', style={'fontWeight': 'bold'}),
-                            dcc.RadioItems(
-                                choropleth_color_modes, choropleth_color_modes[0], inline=True, id='map-color-selector',
-                                style={'marginTop': '0.5rem'}
-                            ),
-                        ]),
                     ]
                 ),
                 # Main plots area
@@ -215,6 +208,27 @@ app.layout = html.Div(
                                 'minHeight': f'{MAP_MIN_HEIGHT}px'
                             }
                         ),
+                        # Choropleth map widget
+                        html.Div(
+                            [
+                                html.Label('Choropleth Map Color Options', style={'fontWeight': 'bold'}),
+                                dcc.RadioItems(
+                                    choropleth_color_modes, choropleth_color_modes[0], inline=True, id='choropleth-map-color-selector',
+                                    style={'marginTop': '0.5rem'}
+                                ),
+                                dcc.Graph(id='choropleth-map', style={'height': '100%', 'width': '100%'})
+                            ],
+                            className='widget',
+                            style={
+                                'backgroundColor': 'white',
+                                'borderRadius': '12px',
+                                'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                                'padding': '1rem',
+                                'gridColumn': f'1 / span {WIDGET_COLS}',
+                                'gridRow': '2',
+                                'minHeight': f'{MAP_MIN_HEIGHT}px'
+                            }
+                        ),
                         # Dynamically generate widgets for the bottom area
                         *[
                             html.Div(
@@ -226,13 +240,13 @@ app.layout = html.Div(
                                     'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
                                     'padding': '1rem',
                                     'gridColumn': f'{(i % WIDGET_COLS) + 1}',
-                                    'gridRow': f'{(i // WIDGET_COLS) + 2}',
+                                    'gridRow': f'{(i // WIDGET_COLS) + 3}',
                                     'minHeight': f'{WIDGET_MIN_HEIGHT}px',
                                     #'height': '100%'  # Make widget fill grid cell
                                 }
                             )
                             for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
-                        ]
+                        ],
                     ]
                 ),
             ]
@@ -342,7 +356,7 @@ def render_map(color_mode):
     )
     return fig
 
-@callback(Output('choropleth-map', 'figure'), Input('event_type_selector', 'value'))
+@callback(Output('choropleth-map', 'figure'), Input('choropleth-map-color-selector', 'value'))
 def display_choropleth(event_type_selector):
     global data_filtered
     
@@ -375,6 +389,7 @@ def display_choropleth(event_type_selector):
         locations="admin1",
         featureidkey="id",
         projection="mercator",
+        color_continuous_scale=px.colors.sequential.matter,
         range_color=[0, max_event_count]
     )
 
@@ -384,7 +399,7 @@ def display_choropleth(event_type_selector):
 
 def load_geojson_files_with_featureid(dir):
     geojson_data = {}
-    print("Loading GeoJSON files from directory:", dir)
+    #print("Loading GeoJSON files from directory:", dir)
 
     # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
     def load_file_with_encoding(file_path):
@@ -530,7 +545,6 @@ def render_time_interval(minTimestamp, maxTimestamp):
     Output('events-by-source', 'figure'),
     Output('event-type-bar', 'figure'),
     Output('date-slider-output', 'children'),
-    Output('choropleth-map', 'figure')
 ], [
     Input('date-slider', 'value'),
     Input('map-color-selector', 'value'),
@@ -551,7 +565,7 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
         data_filtered = data_filtered[data_filtered['fatalities'] > 0]
 
     map = render_map(map_color_mode)
-    # print(relayoutData)
+    #print(relayoutData)
     if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
         # print('trying to preserve map state')
         map_center = relayoutData['map.center']
