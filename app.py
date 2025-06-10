@@ -382,15 +382,17 @@ def display_choropleth(event_type_selector):
     merged_geojson = merge_geojsons(geojson_files)
 
 
-    fig = px.choropleth(
+    fig = px.choropleth_map(
         admin1_event_counts,
         geojson=merged_geojson,
         color=event_type_selector,
         locations="admin1",
         featureidkey="id",
-        projection="mercator",
         color_continuous_scale=px.colors.sequential.matter,
-        range_color=[0, max_event_count]
+        range_color=[0, max_event_count],
+        map_style="carto-positron",
+        center={"lat": 49, "lon": 32},
+        zoom=3
     )
 
     fig.update_geos(fitbounds="locations", visible=False)
