@@ -503,7 +503,7 @@ def update_events_over_time_3d(interval):
         color='sub_event_type',
         color_discrete_map=sub_event_type_color_map,
         title='Events Over Time 3D',
-        labels={'event_date': 'Date', 'count': 'Number of Events'},
+        labels={'event_date': 'Date', 'sub_event_type' : 'Sub Event Type', 'count': 'Number of Events'},
         height=1000,  # Increased height
         width=1300   # Increased width
     )
