@@ -12,6 +12,7 @@ app = Dash()
 
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
+    file_name = '2022-01-01-2025-06-11-Europe.csv'
     data_path = 'data/' + file_name
     url = 'http://www.jannik-rosendahl.com/data/' + file_name
     
