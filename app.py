@@ -194,7 +194,6 @@ app.layout = html.Div(
                 # Main plots area
                 html.Div(
                     id='main-plots',
-                    style={'max-height': '100vh', 'max-width': '100vw'},
                     children=[
                         # Map spans all columns on the first row
                         html.Div(
@@ -498,12 +497,14 @@ def update_events_over_time_3d(interval):
         unique_event_types,
         x='event_date',
         y='sub_event_type',
-        z = 'count',
+        z='count',
         line_group='sub_event_type',
         color='sub_event_type',
         color_discrete_map=sub_event_type_color_map,
         title='Events Over Time 3D',
-        labels={'event_date': 'Date', 'count': 'Number of Events'}
+        labels={'event_date': 'Date', 'count': 'Number of Events'},
+        height=1000,  # Increased height
+        width=1300   # Increased width
     )
     return fig
 
