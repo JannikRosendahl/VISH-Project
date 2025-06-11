@@ -227,7 +227,8 @@ app.layout = html.Div(
                                 'padding': '1rem',
                                 'gridColumn': f'1 / span {WIDGET_COLS}',
                                 'gridRow': '2',
-                                'minHeight': f'{MAP_MIN_HEIGHT}px'
+                                'minHeight': f'{MAP_MIN_HEIGHT}px',
+                                'maxHeight' : '100%'
                             }
                         ),
                         # Dynamically generate widgets for the bottom area
@@ -243,7 +244,7 @@ app.layout = html.Div(
                                     'gridColumn': f'{(i % WIDGET_COLS) + 1}',
                                     'gridRow': f'{(i // WIDGET_COLS) + 3}',
                                     'minHeight': f'{WIDGET_MIN_HEIGHT}px',
-                                    #'height': '100%'  # Make widget fill grid cell
+                                    'maxHeight': '100%'
                                 }
                             )
                             for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
