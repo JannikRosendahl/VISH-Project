@@ -68,7 +68,7 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
 # Configurable number of rows and columns for bottom widgets
-WIDGET_ROWS = 4
+WIDGET_ROWS = 5
 WIDGET_COLS = 2
 
 # Configurable minimum heights (in px)
@@ -84,7 +84,8 @@ widget_graphs = [
     ('event-type-pie', 'Event Type Pie'),
     ('event-type-bar', 'Event Type Bar'),
     ('events-by-source', 'Events by Source'),
-    ('events-over-time', 'Events Over Time')
+    ('events-over-time', 'Events Over Time'),
+    ('events-over-time-3d', 'Events Over Time 3D')
     # Add more widget IDs here if needed
 ]
 
@@ -482,6 +483,27 @@ def update_events_over_time(interval):
         color_discrete_map=sub_event_type_color_map,
         title='Events Over Time',
         labels={'event_date': 'Date', 'count': 'Number of Events'},
+    )
+    return fig
+
+@callback(Output('events-over-time-3d', 'figure'), Input('date-slider', 'value'))
+def update_events_over_time_3d(interval):
+    start_ts, end_ts = interval
+    filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
+    ]
+    unique_event_types = filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    fig = px.line_3d(
+        unique_event_types,
+        x='event_date',
+        y='sub_event_type',
+        z = 'count',
+        line_group='sub_event_type',
+        color='sub_event_type',
+        color_discrete_map=sub_event_type_color_map,
+        title='Events Over Time 3D',
+        labels={'event_date': 'Date', 'count': 'Number of Events'}
     )
     return fig
 
