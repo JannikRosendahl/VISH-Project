@@ -90,7 +90,7 @@ widget_graphs = [
     # Add more widget IDs here if needed
 ]
 
-app.title = 'Ukraine Dashboard'
+app.title = 'Conflict Monitor'
 
 app.layout = html.Div(
     style={
@@ -119,7 +119,7 @@ app.layout = html.Div(
             },
             children=[
                 html.Div(
-                    'Ukraine Dashboard',
+                    'Conflict Monitor',
                     style={'flex': '0 0 auto'}
                 ),
                 html.Div(
