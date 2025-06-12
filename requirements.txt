@@ -1,3 +1,6 @@
 dash
+plotly
+gunicorn
+flask-caching
 pandas
 chardet

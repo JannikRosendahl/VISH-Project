@@ -8,7 +8,7 @@ import json
 import chardet
 import copy
 
-app = Dash()
+app = Dash(__name__)
 
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
@@ -735,3 +735,4 @@ def update_subeventtype_line(interval):
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8050, debug=True, dev_tools_hot_reload=True, dev_tools_ui=True)
+server = app.server

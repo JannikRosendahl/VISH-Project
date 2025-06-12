@@ -1,0 +1,20 @@
+services:
+  dash-app:
+    build: .
+    container_name: dash_app
+    restart: always
+    expose:
+      - "8050"
+    environment:
+      - PORT=8050
+
+  nginx:
+    image: nginx:alpine
+    container_name: dash_nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - dash-app
