@@ -8,6 +8,7 @@ import json
 import chardet
 import copy
 
+debug = True
 app = Dash(__name__)
 
 def load_data() -> pd.DataFrame:
@@ -43,11 +44,10 @@ maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 map_center = {}
 
 # map color modes
-color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']  # <-- Add 'fatalities' here
+color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']
 choropleth_color_modes = ['Battles', 'Explosions/Remote violence', 'Protests', 'Riots', 'Strategic developments', 'Violence against civilians']
-# sub_event_type color map
+
 sub_event_type_color_map = {set: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, set in enumerate(sorted(data['sub_event_type'].unique()))}
-# event_type color map
 event_type_color_map = {et: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, et in enumerate(sorted(data['event_type'].unique()))}
 
 # country color map
@@ -68,9 +68,9 @@ data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).tim
 
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
 
-# Configurable number of rows and columns for bottom widgets
-WIDGET_ROWS = 5
-WIDGET_COLS = 2
+# Configurable number of rows and columns for widgets
+WIDGET_ROWS = 10
+WIDGET_COLS = 1
 
 # Configurable minimum heights (in px)
 MAP_MIN_HEIGHT = 600
@@ -114,8 +114,9 @@ app.layout = html.Div(
                 'letterSpacing': '1px',
                 'boxShadow': '0 2px 8px rgba(0,0,0,0.05)',
                 'position': 'sticky',
-                'top': 0,  # <-- Set to 0 for true stickiness
-                'zIndex': 1000
+                'top': 0,
+                'zIndex': 1000,
+                
             },
             children=[
                 html.Div(
@@ -143,6 +144,8 @@ app.layout = html.Div(
         html.Main(
             style={
                 'display': 'flex',
+                'flexDirection': 'row',
+                'flex': '1 5',
                 'minHeight': 'calc(100vh - 120px)',
                 'padding': '1rem'
             },
@@ -150,7 +153,6 @@ app.layout = html.Div(
                 # Sidebar for controls
                 html.Div(
                     style={
-                        'width': '320px',
                         'backgroundColor': 'white',
                         'borderRadius': '12px',
                         'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
@@ -160,6 +162,7 @@ app.layout = html.Div(
                         'flexDirection': 'column',
                         'gap': '2rem',
                         'minWidth': '260px',
+                        'maxWidth': '300px',
                         'maxHeight': '100%',
                         'overflowY': 'auto'
                     },
@@ -234,7 +237,7 @@ app.layout = html.Div(
                         # Dynamically generate widgets for the bottom area
                         *[
                             html.Div(
-                                dcc.Graph(id=widget_id, style={'height': '100%', 'width': '100%'}),
+                                dcc.Graph(id=widget_id),
                                 className='widget',
                                 style={
                                     'backgroundColor': 'white',
@@ -249,7 +252,10 @@ app.layout = html.Div(
                             )
                             for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
                         ],
-                    ]
+                    ],
+                    style={
+                        'width': '100%',
+                    }
                 ),
             ]
         )
@@ -505,8 +511,6 @@ def update_events_over_time_3d(interval):
         color_discrete_map=sub_event_type_color_map,
         title='Events Over Time 3D',
         labels={'event_date': 'Date', 'sub_event_type' : 'Sub Event Type', 'count': 'Number of Events'},
-        height=1000,  # Increased height
-        width=1300   # Increased width
     )
     return fig
 
@@ -734,5 +738,5 @@ def update_subeventtype_line(interval):
     return fig
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8050, debug=True, dev_tools_hot_reload=True, dev_tools_ui=True)
+    app.run(host="0.0.0.0", port=8050, debug=debug, dev_tools_hot_reload=debug, dev_tools_ui=debug)
 server = app.server
