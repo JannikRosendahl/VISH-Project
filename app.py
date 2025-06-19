@@ -11,6 +11,11 @@ import copy
 debug = True
 app = Dash(__name__)
 
+def print_debug(*args, **kwargs):
+    global debug
+    if debug:
+        print(*args, **kwargs)
+
 def load_data() -> pd.DataFrame:
     file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
     file_name = '2022-01-01-2025-06-11-Europe.csv'
@@ -116,7 +121,6 @@ app.layout = html.Div(
                 'position': 'sticky',
                 'top': 0,
                 'zIndex': 1000,
-                
             },
             children=[
                 html.Div(
@@ -160,19 +164,23 @@ app.layout = html.Div(
                         'marginRight': '2rem',
                         'display': 'flex',
                         'flexDirection': 'column',
-                        'gap': '2rem',
                         'minWidth': '260px',
                         'maxWidth': '300px',
                         'maxHeight': '100%',
                         'overflowY': 'auto'
                     },
                     children=[
+                        html.H3('Data Preprocessing', style={'fontWeight': 'bold'}),
                         html.Div([
-                            html.Label('Map Color Options', style={'fontWeight': 'bold'}),
-                            dcc.RadioItems(
-                                color_modes, color_modes[0], inline=True, id='map-color-selector',
-                                style={'marginTop': '0.5rem'}
+                            html.Label('Actor Filter'),
+                            dcc.Input(
+                                id='actor-filter-input',
+                                type='text',
+                                value='ukraine|russia',
+                                placeholder='Enter filter regex for actors (e.g. ukraine|russia)',
+                                style={'width': '100%', 'marginBottom': '0.5rem'}
                             ),
+                            html.Button('Reload', id='reload-data-btn', n_clicks=0, style={'width': '100%'})
                         ]),
                         html.Div([
                             dcc.Checklist(
@@ -182,6 +190,16 @@ app.layout = html.Div(
                                 style={'marginTop': '0.5rem'}
                             )
                         ]),
+                        html.Hr(style={'margin': '1rem 0'}),
+                        html.H3('Map Color Options', style={'fontWeight': 'bold'}),
+                        html.Div([
+                            html.Label('Select Color Mode'),
+                            dcc.RadioItems(
+                                color_modes, color_modes[0], inline=True, id='map-color-selector',
+                                style={'marginTop': '0.5rem'}
+                            ),
+                        ]),
+                        html.Hr(style={'margin': '1rem 0'}),
                         html.Div(
                             id='notes',
                             style={
@@ -338,7 +356,7 @@ def render_map(color_mode):
                 height=600
             )
         case _:
-            print('Invalid color mode, defaulting to country')
+            print_debug('Invalid color mode, defaulting to country')
             fig = px.scatter_map(
                 data_filtered,
                 lat='latitude',
@@ -429,7 +447,7 @@ def display_choropleth(event_type_selector):
 
 def load_geojson_files_with_featureid(dir):
     geojson_data = {}
-    #print("Loading GeoJSON files from directory:", dir)
+    #print_debug("Loading GeoJSON files from directory:", dir)
 
     # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
     def load_file_with_encoding(file_path):
@@ -615,7 +633,7 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
     global data_filtered
     global map_center
     triggered_id = ctx.triggered_id
-    # print(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}')
+    print_debug(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}, {relayoutData=}')
     minTimestamp, maxTimestamp = interval
     data_filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
@@ -625,9 +643,9 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
         data_filtered = data_filtered[data_filtered['fatalities'] > 0]
 
     map = render_map(map_color_mode)
-    # print(relayoutData)
+    # print_debug(relayoutData)
     if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
-        # print('trying to preserve map state')
+        # print_debug('trying to preserve map state')
         map_center = relayoutData['map.center']
         map.update_layout(
             mapbox_center=relayoutData['map.center'],
