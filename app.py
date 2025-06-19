@@ -35,7 +35,7 @@ def load_data() -> pd.DataFrame:
         print('Downloaded data from URL and saved to local file')
     
     # data preprocessing
-    data = data[data['actor1'].str.contains('ukraine|russia', case=False, na=False)]
+    # data = data[data['actor1'].str.contains('ukraine|russia', case=False, na=False)]
     data['event_date'] = pd.to_datetime(data['event_date'])
 
     data['event_date_i'] = data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp()))
@@ -46,6 +46,7 @@ data = load_data()
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 
+relayoutData = {}
 map_center = {}
 
 # map color modes
@@ -92,7 +93,6 @@ widget_graphs = [
     ('events-by-source', 'Events by Source'),
     ('events-over-time', 'Events Over Time'),
     ('events-over-time-3d', 'Events Over Time 3D')
-    # Add more widget IDs here if needed
 ]
 
 app.title = 'Conflict Monitor'
@@ -106,6 +106,7 @@ app.layout = html.Div(
         'margin': '0',
     },
     children=[
+        html.Div(id='update-metaelement'),
         # Header row with title and date slider
         html.Header(
             style={
@@ -174,13 +175,14 @@ app.layout = html.Div(
                         html.Div([
                             html.Label('Actor Filter'),
                             dcc.Input(
-                                id='actor-filter-input',
+                                id='preprocessing-actor-filter',
                                 type='text',
                                 value='ukraine|russia',
                                 placeholder='Enter filter regex for actors (e.g. ukraine|russia)',
-                                style={'width': '100%', 'marginBottom': '0.5rem'}
+                                style={'width': '100%', 'marginBottom': '0.5rem'},
+                                debounce=True
                             ),
-                            html.Button('Reload', id='reload-data-btn', n_clicks=0, style={'width': '100%'})
+                            html.Button('Reload', id='preprocessing-actor-filter-reload-button', n_clicks=0, style={'width': '100%'})
                         ]),
                         html.Div([
                             dcc.Checklist(
@@ -280,7 +282,88 @@ app.layout = html.Div(
     ]
 )
 
-def render_map(color_mode):
+@callback([
+    Output('update-metaelement', 'children')
+], [
+    Input('date-slider', 'value'),
+    Input('bool_options', 'value'),
+    Input('preprocessing-actor-filter', 'value'),
+    Input('preprocessing-actor-filter-reload-button', 'n_clicks')
+])
+def update_df(interval, bool_options: list[str], preprocessing_actor_filter: str, n_clicks: int):
+    """
+    This function is called by widgets which update the data selection.
+    It filters the global `data` DataFrame into `data_filtered`.
+    Then it returns a dummy output, which is used to trigger `update_widgets`.
+    """
+    global data
+    global data_filtered
+
+    print_debug(f'Updating data. Triggered by {ctx.triggered_id}.')
+    print_debug(f'Arguments: {interval=}, {bool_options=}, {preprocessing_actor_filter=}, {n_clicks=}')
+
+    minTimestamp, maxTimestamp = interval
+    data_filtered = data[
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
+    ]
+
+    if 'Include Non-Fatal Events' not in bool_options:
+        data_filtered = data_filtered[data_filtered['fatalities'] > 0]
+
+    # data = data[data['actor1'].str.contains('ukraine|russia', case=False, na=False)]
+    if preprocessing_actor_filter:
+        data_filtered = data_filtered[data_filtered['actor1'].str.contains(preprocessing_actor_filter, case=False, na=False) |
+                                      data_filtered['actor2'].str.contains(preprocessing_actor_filter, case=False, na=False)]
+
+    print_debug(f'Filtered data contains {len(data_filtered)} rows.')
+
+    return [None]
+
+@callback([
+    Output('map', 'figure'),
+    Output('date-slider-output', 'children'),
+    Output('event-type-pie', 'figure'),
+    Output('choropleth-map', 'figure'),
+    Output('events-over-time', 'figure'),
+    Output('events-over-time-3d', 'figure'),
+    Output('events-by-source', 'figure'),
+    Output('event-type-bar', 'figure'),
+    Output('fatalities-line', 'figure'),
+    Output('fatalities-line-non-cumulative', 'figure'),
+    Output('fatalities-pie', 'figure'),
+    Output('subeventtype-line', 'figure'),
+], [
+    Input('update-metaelement', 'children'),
+    Input('map-color-selector', 'value'),
+    Input('choropleth-map-color-selector', 'value'),
+], [
+    State('map', 'relayoutData')
+]
+)
+def update_widgets(arg, map_color_mode: str, choropleth_options: str, relayoutData):
+    """
+    This function is called by the `update_df` callback, or by a widget which changes display options.
+    It updates all widgets in the app.
+    """
+    print_debug(f'Updating widgets. Triggered by {ctx.triggered_id}.')
+    print_debug(f'Arguments: {arg=}, {map_color_mode=}, {choropleth_options=}')
+
+    return render_map(map_color_mode, relayoutData), \
+        update_date_slider_text(minTimestamp, maxTimestamp), \
+        update_event_type_pie(), \
+        update_choropleth(choropleth_options), \
+        update_events_over_time(), \
+        update_events_over_time_3d(), \
+        update_events_by_source(), \
+        update_event_type_bar(), \
+        update_fatalities_line(), \
+        update_fatalities_line_non_cumulative(), \
+        update_fatalities_pie(), \
+        update_subeventtype_line()
+
+
+def render_map(color_mode, relayout_data=None):
     global data_filtered
     global map_center
 
@@ -380,10 +463,16 @@ def render_map(color_mode):
         unselected=dict(marker=dict(opacity=1)),
         hovertemplate = hovertemplate
     )
+    if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
+        print_debug('trying to preserve map state')
+        map_center = relayoutData['map.center']
+        fig.update_layout(
+            mapbox_center=relayoutData['map.center'],
+            mapbox_zoom=relayoutData['map.zoom']
+        )
     return fig
 
-@callback(Output('event-type-pie', 'figure'), Input('date-slider', 'value'))
-def update_event_type_pie(date_range):
+def update_event_type_pie():
     global data_filtered
 
     event_counts = data_filtered['event_type'].value_counts().reset_index()
@@ -394,16 +483,24 @@ def update_event_type_pie(date_range):
         names='event_type',
         title='Percentage of Total Events by Event Type',
         labels={'event_type': 'Event Type', 'count': 'Number of Events'},
-        color=event_type_color_map,
-        color_discrete_map={et: px.colors.qualitative.Alphabet[i % len(px.colors.qualitative.Alphabet)] for i, et in enumerate(event_counts['event_type'])}
+        color='event_type',
+        color_discrete_map={et: event_type_color_map.get(et, px.colors.qualitative.Alphabet[0]) for et in event_counts['event_type']}
     )
     return fig
 
-@callback(Output('choropleth-map', 'figure'), Input('choropleth-map-color-selector', 'value'))
-def display_choropleth(event_type_selector):
+def update_choropleth(event_type_selector):
     global data_filtered
 
     filtered = data_filtered[data_filtered['country'].isin(['Ukraine'])]
+    if len(filtered) == 0:
+        print_debug('No data available for Ukraine, returning empty figure')
+        return px.choropleth()
+    
+    # check if the event_type_selector has datapoints
+    if event_type_selector not in filtered['event_type'].unique():
+        print_debug(f'No data available for event type: {event_type_selector}, returning empty figure')
+        return px.choropleth()
+
     # Gruppieren nach Region
     # Create a pivot table: rows = admin1, columns = event_type, values = event counts
     admin1_event_counts = pd.pivot_table(
@@ -416,7 +513,7 @@ def display_choropleth(event_type_selector):
     ).reset_index()
 
     # max event count for color range
-    max_event_count = admin1_event_counts[event_type_selector].max()
+    max_event_count = admin1_event_counts.get(event_type_selector, pd.Series([0])).max()
 
     # GeoJSON-Dateien laden
 
@@ -487,9 +584,7 @@ def merge_geojsons(geojson_dict):
             merged["features"].append(copy.deepcopy(g))
     return merged
 
-
-@callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
-def update_events_over_time(interval):
+def update_events_over_time():
     global data_filtered
     unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
     fig = px.line(
@@ -504,8 +599,7 @@ def update_events_over_time(interval):
     )
     return fig
 
-@callback(Output('events-over-time-3d', 'figure'), Input('date-slider', 'value'))
-def update_events_over_time_3d(interval):
+def update_events_over_time_3d():
     global data_filtered
     unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
     fig = px.line_3d(
@@ -552,8 +646,7 @@ def update_date_slider(clickData):
     }
     return markers 
 
-@callback(Output('events-by-source', 'figure'), Input('date-slider', 'value'))
-def render_events_by_source(interval):
+def update_events_by_source():
     global data_filtered
     # Count events per source
     top_sources = (
@@ -587,8 +680,7 @@ def render_events_by_source(interval):
     )
     return fig
 
-@callback(Output('event-type-bar', 'figure'), Input('date-slider', 'value'))
-def render_event_type_bar(interval):
+def update_event_type_bar():
     global data_filtered
     event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
     fig = px.bar(
@@ -603,49 +695,13 @@ def render_event_type_bar(interval):
     )
     return fig
 
-def render_time_interval(minTimestamp, maxTimestamp):
+def update_date_slider_text(minTimestamp, maxTimestamp):
+    global data_filtered
     start_date = pd.to_datetime(minTimestamp, unit='s').strftime('%Y-%m-%d')
     end_date = pd.to_datetime(maxTimestamp, unit='s').strftime('%Y-%m-%d')
-    return f'Showing data starting from {start_date} to {end_date}'
+    return f'Showing data starting from {start_date} to {end_date}. Currently showing {len(data_filtered)} events.'
 
-@callback([
-    Output('map', 'figure'),
-    Output('date-slider-output', 'children')
-], [
-    Input('date-slider', 'value'),
-    Input('map-color-selector', 'value'),
-    Input('bool_options', 'value'),
-], State('map', 'relayoutData'))
-def update_df(interval, map_color_mode: str, bool_options: list[str], relayoutData):
-    global data
-    global data_filtered
-    global map_center
-
-    print_debug(f'Updating data filters, triggered by {ctx.triggered_id}.')
-    print_debug(f'Arguments: {interval=}, {map_color_mode=}, {bool_options=}, {relayoutData=}')
-
-    minTimestamp, maxTimestamp = interval
-    data_filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
-    ]
-    if 'Include Non-Fatal Events' not in bool_options:
-        data_filtered = data_filtered[data_filtered['fatalities'] > 0]
-
-    map = render_map(map_color_mode)
-    if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
-        # print_debug('trying to preserve map state')
-        map_center = relayoutData['map.center']
-        map.update_layout(
-            mapbox_center=relayoutData['map.center'],
-            mapbox_zoom=relayoutData['map.zoom']
-        )
-
-    return map, render_time_interval(minTimestamp, maxTimestamp)
-
-# add callback for fatalities line chart
-@callback(Output('fatalities-line', 'figure'), Input('date-slider', 'value'))
-def update_fatalities_line(interval):
+def update_fatalities_line():
     global data_filtered
     fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fatalities_by_date['fatalities'] = fatalities_by_date['fatalities'].cumsum()
@@ -658,12 +714,7 @@ def update_fatalities_line(interval):
     )
     return fig
 
-# add callback for non-cumulative fatalities line chart
-@callback(
-   Output('fatalities-line-non-cumulative', 'figure'),
-   Input('date-slider', 'value')
-)
-def update_fatalities_line_non_cumulative(interval):
+def update_fatalities_line_non_cumulative():
     global data_filtered
     fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fig = px.line(
@@ -675,12 +726,7 @@ def update_fatalities_line_non_cumulative(interval):
     )
     return fig
 
-# add callback for fatalities by sub_event_type pie chart
-@callback(
-   Output('fatalities-pie', 'figure'),
-   Input('date-slider', 'value')
-)
-def update_fatalities_pie(interval):
+def update_fatalities_pie():
     global data_filtered
     fatalities_by_sub_event = data_filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
     total_fatalities = fatalities_by_sub_event['fatalities'].sum()
@@ -705,12 +751,15 @@ def update_fatalities_pie(interval):
     )
     return fig
 
-# Add callback for sub_event_type stacked line chart
-@callback(Output('subeventtype-line', 'figure'), Input('date-slider', 'value'))
-def update_subeventtype_line(interval):
+def update_subeventtype_line():
     global data_filtered
     # Group by date and sub_event_type
     grouped = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+
+    # check if there are any data points
+    if grouped.empty:
+        print_debug('No data available for sub event types, returning empty figure')
+        return px.area()
     
     # Pivot for stacked line chart
     pivot = grouped.pivot(index='event_date', columns='sub_event_type', values='count').fillna(0).cumsum()
