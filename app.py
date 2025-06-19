@@ -141,8 +141,15 @@ app.layout = html.Div(
             },
             children=[
                 html.Div(
-                    'Conflict Monitor',
-                    style={'flex': '0 0 auto'}
+                    children=[
+                        html.Div(
+                            'Conflict Monitor',
+                            id='header-title',
+                            style={'flex': '0 0 auto'}
+                        ),
+                        html.Div(className='loader', id='loading-indicator'),
+                    ],
+                    style={'display': 'flex', 'flexDirection': 'column', 'marginTop': '0.5rem', 'alignItems': 'center', 'flex': '0 0 auto'}
                 ),
                 html.Div(
                     style={'flex': '1', 'marginLeft': '3rem', 'marginRight': '2rem'},
@@ -310,6 +317,8 @@ app.layout = html.Div(
 ], [
     Input('dataset-selector', 'value'),
     Input('reload-dataset-button', 'n_clicks'),
+], running=[
+    (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
 def reload_dataset(selected_file: str, n_clicks: int):
     """
@@ -335,6 +344,8 @@ def reload_dataset(selected_file: str, n_clicks: int):
     Input('bool_options', 'value'),
     Input('preprocessing-actor-filter', 'value'),
     Input('preprocessing-actor-filter-reload-button', 'n_clicks')
+], running=[
+    (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
 def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: str, n_clicks: int):
     """
@@ -385,6 +396,8 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
     Input('choropleth-map-color-selector', 'value'),
 ], [
     State('map', 'relayoutData')
+], running=[
+    (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
 def update_widgets(arg, map_color_mode: str, choropleth_options: str, relayoutData):
     """
