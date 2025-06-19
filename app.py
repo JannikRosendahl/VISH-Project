@@ -384,12 +384,9 @@ def render_map(color_mode):
 
 @callback(Output('event-type-pie', 'figure'), Input('date-slider', 'value'))
 def update_event_type_pie(date_range):
-    start_ts, end_ts = date_range
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    event_counts = filtered['event_type'].value_counts().reset_index()
+    global data_filtered
+
+    event_counts = data_filtered['event_type'].value_counts().reset_index()
     event_counts.columns = ['event_type', 'count']
     fig = px.pie(
         event_counts,
@@ -493,12 +490,8 @@ def merge_geojsons(geojson_dict):
 
 @callback(Output('events-over-time', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    unique_event_types = filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    global data_filtered
+    unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
     fig = px.line(
         unique_event_types,
         x='event_date',
@@ -513,12 +506,8 @@ def update_events_over_time(interval):
 
 @callback(Output('events-over-time-3d', 'figure'), Input('date-slider', 'value'))
 def update_events_over_time_3d(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    unique_event_types = filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    global data_filtered
+    unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
     fig = px.line_3d(
         unique_event_types,
         x='event_date',
@@ -553,23 +542,26 @@ def update_date_slider(clickData):
     id = clickData['points'][0]['customdata'][0]
     point_data = data[data['event_id_cnty'] == id].iloc[0]
     date = point_data['event_date']
-    markers[int(pd.Timestamp(date).timestamp())] = { 'label': date.strftime('|'),'style': {"color": "blue", "fontSize": "60px", "transform": "translate(0, -35px)" } }
+    markers[int(pd.Timestamp(date).timestamp())] = {
+        'label': date.strftime('|'),
+        'style': {
+            "color": "lightblue",
+            "fontSize": "40px",
+            "transform": "translate(-5px, -42px)" 
+        }
+    }
     return markers 
 
 @callback(Output('events-by-source', 'figure'), Input('date-slider', 'value'))
 def render_events_by_source(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
+    global data_filtered
     # Count events per source
     top_sources = (
-        filtered.groupby(['source']).size()
+        data_filtered.groupby(['source']).size()
         .nlargest(5)
         .index.tolist()
     )
-    filtered_top = filtered[filtered['source'].isin(top_sources)]
+    filtered_top = data_filtered[data_filtered['source'].isin(top_sources)]
     source_event_counts = (
         filtered_top.groupby(['source', 'sub_event_type'])
         .size()
@@ -597,12 +589,8 @@ def render_events_by_source(interval):
 
 @callback(Output('event-type-bar', 'figure'), Input('date-slider', 'value'))
 def render_event_type_bar(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    event_counts = filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
+    global data_filtered
+    event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
     fig = px.bar(
         event_counts,
         x='event_type',
@@ -628,12 +616,14 @@ def render_time_interval(minTimestamp, maxTimestamp):
     Input('map-color-selector', 'value'),
     Input('bool_options', 'value'),
 ], State('map', 'relayoutData'))
-def update_df(interval, map_color_mode, bool_options, relayoutData):
+def update_df(interval, map_color_mode: str, bool_options: list[str], relayoutData):
     global data
     global data_filtered
     global map_center
-    triggered_id = ctx.triggered_id
-    print_debug(f'callback triggered by {triggered_id}, {interval=}, {map_color_mode=}, {bool_options=}, {relayoutData=}')
+
+    print_debug(f'Updating data filters, triggered by {ctx.triggered_id}.')
+    print_debug(f'Arguments: {interval=}, {map_color_mode=}, {bool_options=}, {relayoutData=}')
+
     minTimestamp, maxTimestamp = interval
     data_filtered = data[
         (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
@@ -643,7 +633,6 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
         data_filtered = data_filtered[data_filtered['fatalities'] > 0]
 
     map = render_map(map_color_mode)
-    # print_debug(relayoutData)
     if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
         # print_debug('trying to preserve map state')
         map_center = relayoutData['map.center']
@@ -657,12 +646,8 @@ def update_df(interval, map_color_mode, bool_options, relayoutData):
 # add callback for fatalities line chart
 @callback(Output('fatalities-line', 'figure'), Input('date-slider', 'value'))
 def update_fatalities_line(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
+    global data_filtered
+    fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fatalities_by_date['fatalities'] = fatalities_by_date['fatalities'].cumsum()
     fig = px.line(
         fatalities_by_date,
@@ -679,12 +664,8 @@ def update_fatalities_line(interval):
    Input('date-slider', 'value')
 )
 def update_fatalities_line_non_cumulative(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    fatalities_by_date = filtered.groupby('event_date')['fatalities'].sum().reset_index()
+    global data_filtered
+    fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
     fig = px.line(
         fatalities_by_date,
         x='event_date',
@@ -700,12 +681,8 @@ def update_fatalities_line_non_cumulative(interval):
    Input('date-slider', 'value')
 )
 def update_fatalities_pie(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
-    fatalities_by_sub_event = filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
+    global data_filtered
+    fatalities_by_sub_event = data_filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
     total_fatalities = fatalities_by_sub_event['fatalities'].sum()
     other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
     if not other_group.empty:
@@ -731,17 +708,10 @@ def update_fatalities_pie(interval):
 # Add callback for sub_event_type stacked line chart
 @callback(Output('subeventtype-line', 'figure'), Input('date-slider', 'value'))
 def update_subeventtype_line(interval):
-    start_ts, end_ts = interval
-    filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= start_ts) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= end_ts)
-    ]
+    global data_filtered
     # Group by date and sub_event_type
-    grouped = (
-        filtered.groupby(['event_date', 'sub_event_type'])
-        .size()
-        .reset_index(name='count')
-    )
+    grouped = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    
     # Pivot for stacked line chart
     pivot = grouped.pivot(index='event_date', columns='sub_event_type', values='count').fillna(0).cumsum()
     fig = px.area(
