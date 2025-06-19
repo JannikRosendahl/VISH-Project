@@ -16,11 +16,28 @@ def print_debug(*args, **kwargs):
     if debug:
         print(*args, **kwargs)
 
-def load_data() -> pd.DataFrame:
-    file_name = 'Europe-Central-Asia_2018-2025_May02.csv'
-    file_name = '2022-01-01-2025-06-11-Europe.csv'
+default_file = '2022-01-01-2025-06-11-Europe.csv'
+available_files: set
+
+def update_available_files() -> set[str]:
+    global default_file
+    available_files = set()
+    available_files.add(default_file)
+
+    data_path = 'data/'
+    try:
+        files = os.listdir(data_path)
+        for file in files:
+            if file.endswith('.csv'):
+                available_files.add(file)
+    except FileNotFoundError:
+        pass
+    print_debug(f'Available files: {available_files}')
+    return available_files
+available_files = update_available_files()
+
+def load_data(file_name: str) -> pd.DataFrame:
     data_path = 'data/' + file_name
-    url = 'http://www.jannik-rosendahl.com/data/' + file_name
     
     # check if the file exists locally
     try:
@@ -30,18 +47,16 @@ def load_data() -> pd.DataFrame:
     except FileNotFoundError:
         os.makedirs('data', exist_ok=True)
         print('Local file not found, downloading from URL, this may take a minute')
+        url = 'http://www.jannik-rosendahl.com/data/' + file_name
         data = pd.read_csv(url)
         data.to_csv(data_path, index=False)
         print('Downloaded data from URL and saved to local file')
     
-    # data preprocessing
-    # data = data[data['actor1'].str.contains('ukraine|russia', case=False, na=False)]
     data['event_date'] = pd.to_datetime(data['event_date'])
-
     data['event_date_i'] = data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp()))
     return data
 
-data = load_data()
+data = load_data(default_file)
 
 minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
 maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
@@ -106,7 +121,8 @@ app.layout = html.Div(
         'margin': '0',
     },
     children=[
-        html.Div(id='update-metaelement'),
+        html.Div(id='update-metaelement', style={'display': 'none'}),
+        html.Div(id='meta-update-dataset', style={'display': 'none'}),
         # Header row with title and date slider
         html.Header(
             style={
@@ -171,6 +187,13 @@ app.layout = html.Div(
                         'overflowY': 'auto'
                     },
                     children=[
+                        html.H3('Change Dataset', style={'fontWeight': 'bold'}),
+                        dcc.Dropdown(
+                            options=[{'label': file, 'value': file} for file in sorted(available_files, key=lambda x: x.lower())],
+                            id='dataset-selector',
+                            value=default_file,
+                        ),
+                        html.Button('Reload Dataset', id='reload-dataset-button', n_clicks=0, style={'width': '100%'}),
                         html.H3('Data Preprocessing', style={'fontWeight': 'bold'}),
                         html.Div([
                             html.Label('Actor Filter'),
@@ -182,7 +205,7 @@ app.layout = html.Div(
                                 style={'width': '100%', 'marginBottom': '0.5rem'},
                                 debounce=True
                             ),
-                            html.Button('Reload', id='preprocessing-actor-filter-reload-button', n_clicks=0, style={'width': '100%'})
+                            html.Button('Filter', id='preprocessing-actor-filter-reload-button', n_clicks=0, style={'width': '100%'})
                         ]),
                         html.Div([
                             dcc.Checklist(
@@ -283,14 +306,37 @@ app.layout = html.Div(
 )
 
 @callback([
-    Output('update-metaelement', 'children')
+    Output('meta-update-dataset', 'children'),
 ], [
+    Input('dataset-selector', 'value'),
+    Input('reload-dataset-button', 'n_clicks'),
+])
+def reload_dataset(selected_file: str, n_clicks: int):
+    """
+    This function is called by the dataset selector or the reload button.
+    It reloads the data from the selected file and updates the notes.
+    """
+    global data
+    global available_files
+
+    print_debug(f'Reloading dataset. Triggered by {ctx.triggered_id}.')
+    print_debug(f'Arguments: {n_clicks=}, {selected_file=}')
+
+    data = load_data(selected_file)
+    update_available_files()
+
+    return [None]
+
+@callback([
+    Output('update-metaelement', 'children'),
+], [
+    Input('meta-update-dataset', 'children'),
     Input('date-slider', 'value'),
     Input('bool_options', 'value'),
     Input('preprocessing-actor-filter', 'value'),
     Input('preprocessing-actor-filter-reload-button', 'n_clicks')
 ])
-def update_df(interval, bool_options: list[str], preprocessing_actor_filter: str, n_clicks: int):
+def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: str, n_clicks: int):
     """
     This function is called by widgets which update the data selection.
     It filters the global `data` DataFrame into `data_filtered`.
@@ -319,7 +365,7 @@ def update_df(interval, bool_options: list[str], preprocessing_actor_filter: str
     print_debug(f'Filtered data contains {len(data_filtered)} rows.')
 
     return [None]
-
+    
 @callback([
     Output('map', 'figure'),
     Output('date-slider-output', 'children'),
@@ -339,8 +385,7 @@ def update_df(interval, bool_options: list[str], preprocessing_actor_filter: str
     Input('choropleth-map-color-selector', 'value'),
 ], [
     State('map', 'relayoutData')
-]
-)
+])
 def update_widgets(arg, map_color_mode: str, choropleth_options: str, relayoutData):
     """
     This function is called by the `update_df` callback, or by a widget which changes display options.
