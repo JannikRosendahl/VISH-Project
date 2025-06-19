@@ -45,7 +45,7 @@ map_center = {}
 
 # map color modes
 color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']
-choropleth_color_modes = ['Battles', 'Explosions/Remote violence', 'Protests', 'Riots', 'Strategic developments', 'Violence against civilians']
+choropleth_color_modes = data['event_type'].unique().tolist()
 
 sub_event_type_color_map = {set: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, set in enumerate(sorted(data['sub_event_type'].unique()))}
 event_type_color_map = {et: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, et in enumerate(sorted(data['event_type'].unique()))}
