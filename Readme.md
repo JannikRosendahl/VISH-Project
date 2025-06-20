@@ -1,29 +1,37 @@
-# Project for MIN-VISH, 2025, Ahlers
+# "Conflict Monitor" - Project for MIN-VISH, 2025, Ahlers
+## Team Members
+- Lukas Müller / 
+- Erik Burmester / 
+- Jannik Rosendahl / 1670835
+
 
 ## Setup
-
-### Create and activate virtual environment on macOS and Linux
+### Docker
 ```bash
-# setup virtual environment
+docker compose up
+```
+
+### Manual Python
+
+#### Create and activate virtual environment on macOS and Linux
+```bash
 python -m venv .venv
 source .venv/bin/activate
 ```
 
-### Create and activate virtual environment on Windows
+#### Create and activate virtual environment on Windows
 ```cmd
 # setup virtual environment
 python -m venv .venv
 .venv/Script/Activate.ps1
 ```
 
-### Install dependencies
-
+#### Install dependencies
 ```bash
-# install dependencies
 pip install -r requirements.txt
 ```
 
+#### Running the application
 ```bash
-# running the app
 python app.py
 ```
