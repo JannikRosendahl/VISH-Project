@@ -331,6 +331,10 @@ def reload_dataset(selected_file: str, n_clicks: int):
     print_debug(f'Reloading dataset. Triggered by {ctx.triggered_id}.')
     print_debug(f'Arguments: {n_clicks=}, {selected_file=}')
 
+    if not selected_file:
+        print_debug('No file selected, using default file.')
+        selected_file = default_file
+
     data = load_data(selected_file)
     update_available_files()
 
