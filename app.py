@@ -1,12 +1,13 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-import os
-from dash import Dash, State, html, dcc, Input, Output, callback, ctx
-import plotly.express as px
-import pandas as pd
-import json
-import chardet
 import copy
+import json
+import os
+
+import chardet
+import pandas as pd
+import plotly.express as px
+from dash import Dash, Input, Output, State, callback, ctx, dcc, html
 
 debug = True
 app = Dash(__name__)
@@ -232,17 +233,37 @@ app.layout = html.Div(
                             ),
                         ]),
                         html.Hr(style={'margin': '1rem 0'}),
-                        html.Div(
-                            id='notes',
-                            style={
-                                'marginTop': '2rem',
-                                'padding': '1rem',
-                                'backgroundColor': '#f0f4f8',
-                                'borderRadius': '8px',
-                                'fontSize': '1rem',
-                                'minHeight': '80px'
-                            }
-                        ),
+                                html.Div(
+                                    id='notes',
+                                    style={
+                                        'marginTop': '2rem',
+                                        'padding': '1rem',
+                                        'backgroundColor': '#f0f4f8',
+                                        'borderRadius': '8px',
+                                        'fontSize': '1rem',
+                                        'minHeight': '80px'
+                                    }
+                                ),
+                                html.Hr(style={'margin': '1rem 0'}),
+                                html.H3('Display Options', style={'fontWeight': 'bold'}),
+                                html.Div([
+                                    dcc.Checklist(
+                                        ['Exclude Outliers'],
+                                        [],
+                                        id='exclude-outliers-checkbox',
+                                        style={'marginTop': '0.5rem'}
+                                    ),
+                                    html.Label('Outlier threshold (relative occurrence)', style={'marginTop': '0.5rem', 'display': 'block'}),
+                                    dcc.Slider(
+                                        id='outlier-threshold-slider',
+                                        min=0.0,
+                                        max=0.1,
+                                        step=0.001,
+                                        value=0.01,
+                                        marks={0.0: '0%', 0.005: '0.5%', 0.01: '1%', 0.02: '2%', 0.05: '5%', 0.1: '10%'},
+                                        tooltip={'placement': 'bottom', 'always_visible': False}
+                                    )
+                                ]),
                     ]
                 ),
                 # Main plots area
@@ -398,12 +419,14 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
     Input('update-metaelement', 'children'),
     Input('map-color-selector', 'value'),
     Input('choropleth-map-color-selector', 'value'),
+    Input('exclude-outliers-checkbox', 'value'),
+    Input('outlier-threshold-slider', 'value'),
 ], [
     State('map', 'relayoutData')
 ], running=[
     (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
-def update_widgets(arg, map_color_mode: str, choropleth_options: str, relayoutData):
+def update_widgets(arg, map_color_mode: str, choropleth_options: str, exclude_outliers_value, outlier_threshold_value, relayoutData):
     """
     This function is called by the `update_df` callback, or by a widget which changes display options.
     It updates all widgets in the app.
@@ -411,18 +434,29 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, relayoutDa
     print_debug(f'Updating widgets. Triggered by {ctx.triggered_id}.')
     print_debug(f'Arguments: {arg=}, {map_color_mode=}, {choropleth_options=}')
 
-    return render_map(map_color_mode, relayoutData), \
-        update_date_slider_text(minTimestamp, maxTimestamp), \
-        update_event_type_pie(), \
-        update_choropleth(choropleth_options), \
-        update_events_over_time(), \
-        update_events_over_time_3d(), \
-        update_events_by_source(), \
-        update_event_type_bar(), \
-        update_fatalities_line(), \
-        update_fatalities_line_non_cumulative(), \
-        update_fatalities_pie(), \
-        update_subeventtype_line()
+    # Determine exclude flag from checklist value
+    exclude_outliers = False
+    try:
+        exclude_outliers = 'Exclude Outliers' in (exclude_outliers_value or [])
+    except Exception:
+        exclude_outliers = False
+
+    threshold = float(outlier_threshold_value or 0.01)
+
+    return (
+        render_map(map_color_mode, relayoutData),
+        update_date_slider_text(minTimestamp, maxTimestamp),
+        update_event_type_pie(exclude_outliers, threshold),
+        update_choropleth(choropleth_options),
+        update_events_over_time(exclude_outliers, threshold),
+        update_events_over_time_3d(exclude_outliers, threshold),
+        update_events_by_source(exclude_outliers, threshold),
+        update_event_type_bar(exclude_outliers, threshold),
+        update_fatalities_line(),
+        update_fatalities_line_non_cumulative(),
+        update_fatalities_pie(exclude_outliers, threshold),
+        update_subeventtype_line(exclude_outliers, threshold),
+    )
 
 
 def render_map(color_mode, relayout_data=None):
@@ -534,11 +568,19 @@ def render_map(color_mode, relayout_data=None):
         )
     return fig
 
-def update_event_type_pie():
+def update_event_type_pie(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
 
     event_counts = data_filtered['event_type'].value_counts().reset_index()
     event_counts.columns = ['event_type', 'count']
+
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'event_type', outlier_threshold)
+        event_counts = event_counts[event_counts['event_type'].isin(allowed)]
+
+    if event_counts.empty:
+        return px.pie()
+
     fig = px.pie(
         event_counts,
         values='count',
@@ -646,11 +688,54 @@ def merge_geojsons(geojson_dict):
             merged["features"].append(copy.deepcopy(g))
     return merged
 
-def update_events_over_time():
+
+def compute_allowed_categories(df: pd.DataFrame, column: str, threshold: float, value_col: str | None = None) -> set:
+    """
+    Return a set of category values from `column` whose relative occurrence (by count or by `value_col` sum)
+    is >= threshold. If threshold filters out everything, return the full set to avoid empty plots.
+    """
+    if df.empty or threshold <= 0:
+        return set(df[column].dropna().unique())
+
+    if value_col is None:
+        counts = df[column].value_counts()
+    else:
+        counts = df.groupby(column)[value_col].sum()
+
+    total = counts.sum()
+    if total <= 0:
+        return set(counts.index)
+
+    rel = counts / total
+    allowed = set(rel[rel >= threshold].index)
+    if not allowed:
+        # Don't return empty set — fallback to keeping all categories
+        return set(counts.index)
+    return allowed
+
+
+def maybe_filter_by_outliers(df: pd.DataFrame, column: str, exclude_outliers: bool, threshold: float, value_col: str | None = None) -> pd.DataFrame:
+    """Return df filtered to only include allowed categories if exclude_outliers is True."""
+    if not exclude_outliers:
+        return df
+    allowed = compute_allowed_categories(df, column, threshold, value_col=value_col)
+    if not allowed:
+        return df
+    return df[df[column].isin(allowed)]
+
+def update_events_over_time(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
-    unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    grouped_df = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
+        grouped_df = grouped_df[grouped_df['sub_event_type'].isin(allowed)]
+
+    if grouped_df.empty:
+        return px.line()
+
     fig = px.line(
-        unique_event_types,
+        grouped_df,
         x='event_date',
         y='count',
         line_group='sub_event_type',
@@ -661,11 +746,19 @@ def update_events_over_time():
     )
     return fig
 
-def update_events_over_time_3d():
+def update_events_over_time_3d(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
-    unique_event_types = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+    grouped_df = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
+        grouped_df = grouped_df[grouped_df['sub_event_type'].isin(allowed)]
+
+    if grouped_df.empty:
+        return px.line_3d()
+
     fig = px.line_3d(
-        unique_event_types,
+        grouped_df,
         x='event_date',
         y='sub_event_type',
         z='count',
@@ -708,7 +801,7 @@ def update_date_slider(clickData):
     }
     return markers 
 
-def update_events_by_source():
+def update_events_by_source(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
     # Count events per source
     top_sources = (
@@ -722,6 +815,12 @@ def update_events_by_source():
         .size()
         .reset_index(name='count')
     )
+
+    # Apply outlier exclusion on the sub_event_type (color) if requested
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
+        source_event_counts = source_event_counts[source_event_counts['sub_event_type'].isin(allowed)]
+
     # Sort by total number of reports per source (descending)
     source_totals = source_event_counts.groupby('source')['count'].sum().sort_values(ascending=False)
     source_event_counts['source'] = pd.Categorical(
@@ -730,6 +829,10 @@ def update_events_by_source():
         ordered=True
     )
     source_event_counts = source_event_counts.sort_values(['source', 'sub_event_type'])
+
+    if source_event_counts.empty:
+        return px.bar()
+
     fig = px.bar(
         source_event_counts,
         x='source',
@@ -742,9 +845,17 @@ def update_events_by_source():
     )
     return fig
 
-def update_event_type_bar():
+def update_event_type_bar(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
     event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
+
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
+        event_counts = event_counts[event_counts['sub_event_type'].isin(allowed)]
+
+    if event_counts.empty:
+        return px.bar()
+
     fig = px.bar(
         event_counts,
         x='event_type',
@@ -788,19 +899,31 @@ def update_fatalities_line_non_cumulative():
     )
     return fig
 
-def update_fatalities_pie():
+def update_fatalities_pie(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
     fatalities_by_sub_event = data_filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
-    total_fatalities = fatalities_by_sub_event['fatalities'].sum()
-    other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
-    if not other_group.empty:
-        other_group_sum = other_group['fatalities'].sum()
-        other_group_name = 'Other'
-        other_group_row = pd.DataFrame({'sub_event_type': [other_group_name], 'fatalities': [other_group_sum]})
-        fatalities_by_sub_event = pd.concat(
-            [fatalities_by_sub_event[~fatalities_by_sub_event['sub_event_type'].isin(other_group['sub_event_type'])],
-             other_group_row])
+
+    if exclude_outliers:
+        # Use fatalities sums to determine relative importance
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold, value_col='fatalities')
+        fatalities_by_sub_event = fatalities_by_sub_event[fatalities_by_sub_event['sub_event_type'].isin(allowed)]
+    else:
+        # previous behavior: group very small contributors into 'Other'
+        total_fatalities = fatalities_by_sub_event['fatalities'].sum()
+        if total_fatalities > 0:
+            other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
+            if not other_group.empty:
+                other_group_sum = other_group['fatalities'].sum()
+                other_group_name = 'Other'
+                other_group_row = pd.DataFrame({'sub_event_type': [other_group_name], 'fatalities': [other_group_sum]})
+                fatalities_by_sub_event = pd.concat(
+                    [fatalities_by_sub_event[~fatalities_by_sub_event['sub_event_type'].isin(other_group['sub_event_type'])],
+                     other_group_row])
+
     fatalities_by_sub_event = fatalities_by_sub_event.sort_values(by='fatalities', ascending=False)
+
+    if fatalities_by_sub_event.empty:
+        return px.pie()
 
     fig = px.pie(
         fatalities_by_sub_event,
@@ -813,10 +936,14 @@ def update_fatalities_pie():
     )
     return fig
 
-def update_subeventtype_line():
+def update_subeventtype_line(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
     global data_filtered
     # Group by date and sub_event_type
     grouped = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
+
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
+        grouped = grouped[grouped['sub_event_type'].isin(allowed)]
 
     # check if there are any data points
     if grouped.empty:
