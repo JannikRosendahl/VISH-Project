@@ -372,7 +372,7 @@ def update_fatalities_line_non_cumulative(data_filtered: pd.DataFrame, trend_win
 
     # Layout: label axes and make the secondary axis readable
     fig.update_layout(
-        title='Fatalities Per Day (with Trend) and Cumulative Fatalities',
+        title='Fatalities per Day (daily, trend, cumulative)',
         xaxis_title='Date',
         legend_title_text='Series',
         template='plotly_white'
@@ -380,6 +380,110 @@ def update_fatalities_line_non_cumulative(data_filtered: pd.DataFrame, trend_win
 
     fig.update_yaxes(title_text='Daily Fatalities', secondary_y=False)
     fig.update_yaxes(title_text='Cumulative Fatalities', secondary_y=True)
+
+    return fig
+
+
+def update_events_per_day_by_category(data_filtered: pd.DataFrame, category_col: str = 'event_type', trend_window: int = 7, exclude_outliers: bool = False, outlier_threshold: float = 0.01):
+    """Plot events per day for each category with a rolling trend and cumulative on a secondary axis.
+
+    Parameters
+    - data_filtered: DataFrame with at least 'event_date' and the category_col.
+    - category_col: column name to group by (default 'event_type').
+    - trend_window: window size (days) for the rolling average trend.
+    """
+    # Group and pivot so each category is a column with daily counts
+    grouped = (
+        data_filtered.groupby(['event_date', category_col])
+        .size()
+        .reset_index(name='count')
+    )
+
+    if grouped.empty:
+        return px.line()
+
+    pivot = grouped.pivot(index='event_date', columns=category_col, values='count').fillna(0)
+    pivot = pivot.sort_index()
+
+    # Optionally exclude rare categories (outliers)
+    if exclude_outliers:
+        allowed = compute_allowed_categories(data_filtered, category_col, outlier_threshold)
+        # keep original column order but only allowed categories
+        categories = [c for c in pivot.columns if c in allowed]
+        if not categories:
+            return px.line()
+        pivot = pivot[categories]
+    else:
+        categories = list(pivot.columns)
+    palette = px.colors.qualitative.Plotly
+    # ensure enough colors by cycling
+    from itertools import cycle
+    color_cycle = cycle(palette)
+    color_map = {cat: next(color_cycle) for cat in categories}
+
+    # Create figure with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # For each category, add daily, trend, and cumulative traces
+    for cat in categories:
+        daily = pivot[cat]
+        trend = daily.rolling(window=trend_window, min_periods=1).mean()
+        cumulative = daily.cumsum()
+
+        color = color_map.get(cat, 'gray')
+
+        # Daily (primary axis) - light thin line
+        fig.add_trace(
+            go.Scatter(
+                x=pivot.index,
+                y=daily,
+                mode='lines',
+                name=f'{cat} - Daily',
+                legendgroup=cat,
+                line=dict(color=color, width=1),
+                opacity=0.6,
+                hovertemplate=f'%{{x}}<br>{cat} Daily: %{{y}}<extra></extra>'
+            ),
+            secondary_y=False,
+        )
+
+        # Trend (primary axis) - dashed thicker line
+        fig.add_trace(
+            go.Scatter(
+                x=pivot.index,
+                y=trend,
+                mode='lines',
+                name=f'{cat} - Trend',
+                legendgroup=cat,
+                line=dict(color=color, dash='dash', width=2.5),
+                hovertemplate=f'%{{x}}<br>{cat} Trend: %{{y:.1f}}<extra></extra>'
+            ),
+            secondary_y=False,
+        )
+
+        # Cumulative (secondary axis) - solid thicker line
+        fig.add_trace(
+            go.Scatter(
+                x=pivot.index,
+                y=cumulative,
+                mode='lines',
+                name=f'{cat} - Cumulative',
+                legendgroup=cat,
+                line=dict(color=color, width=2.5),
+                hovertemplate=f'%{{x}}<br>{cat} Cumulative: %{{y}}<extra></extra>'
+            ),
+            secondary_y=True,
+        )
+
+    fig.update_layout(
+        title=f'Events per Day by {category_col} (daily, trend, cumulative)',
+        xaxis_title='Date',
+        legend_title_text='Series',
+        template='plotly_white'
+    )
+
+    fig.update_yaxes(title_text='Daily Events', secondary_y=False)
+    fig.update_yaxes(title_text='Cumulative Events', secondary_y=True)
 
     return fig
 

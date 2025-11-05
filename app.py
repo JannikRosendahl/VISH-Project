@@ -71,8 +71,9 @@ WIDGET_MIN_HEIGHT = 400
 # List of widget graph IDs (add or remove as needed)
 widget_graphs = [
     ('fatalities-line-non-cumulative', 'Fatalities Per Day'),
+    ('events-per-day-by-type', 'Events Per Day by Type'),
     ('fatalities-line', 'Fatalities Line'),
-    ('subeventtype-line', 'Sub Event Type Over Time'),  # <-- Added new widget
+    ('subeventtype-line', 'Sub Event Type Over Time'),
     ('fatalities-pie', 'Fatalities Pie'),
     ('event-type-pie', 'Event Type Pie'),
     ('event-type-bar', 'Event Type Bar'),
@@ -203,6 +204,21 @@ app.layout = html.Div(
                             ),
                         ]),
                         html.Hr(style={'margin': '1rem 0'}),
+                        html.H3('Events Options', style={'fontWeight': 'bold'}),
+                        html.Div([
+                            html.Label('Group events by'),
+                            dcc.RadioItems(
+                                options=[
+                                    {'label': 'Event Type', 'value': 'event_type'},
+                                    {'label': 'Sub Event Type', 'value': 'sub_event_type'},
+                                ],
+                                value='event_type',
+                                id='events-category-selector',
+                                inline=True,
+                                style={'marginTop': '0.5rem'}
+                            ),
+                        ]),
+                        html.Hr(style={'margin': '1rem 0'}),
                                 html.Div(
                                     id='notes',
                                     style={
@@ -219,7 +235,7 @@ app.layout = html.Div(
                                 html.Div([
                                     dcc.Checklist(
                                         ['Exclude Outliers'],
-                                        [],
+                                        ['Exclude Outliers'],
                                         id='exclude-outliers-checkbox',
                                         style={'marginTop': '0.5rem'}
                                     ),
@@ -230,7 +246,7 @@ app.layout = html.Div(
                                         max=0.1,
                                         step=0.001,
                                         value=0.01,
-                                        marks={0.0: '0%', 0.005: '0.5%', 0.01: '1%', 0.02: '2%', 0.05: '5%', 0.1: '10%'},
+                                        marks={0.0: '0%', 0.005: '0.5%',  0.02: '2%', 0.05: '5%', 0.1: '10%'},
                                         tooltip={'placement': 'bottom', 'always_visible': False}
                                     )
                                 ]),
@@ -390,10 +406,12 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
     Output('fatalities-line-non-cumulative', 'figure'),
     Output('fatalities-pie', 'figure'),
     Output('subeventtype-line', 'figure'),
+    Output('events-per-day-by-type', 'figure'),
 ], [
     Input('update-metaelement', 'children'),
     Input('map-color-selector', 'value'),
     Input('choropleth-map-color-selector', 'value'),
+    Input('events-category-selector', 'value'),
     Input('exclude-outliers-checkbox', 'value'),
     Input('outlier-threshold-slider', 'value'),
 ], [
@@ -401,7 +419,7 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
 ], running=[
     (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
-def update_widgets(arg, map_color_mode: str, choropleth_options: str, exclude_outliers_value, outlier_threshold_value, relayoutData):
+def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_category: str, exclude_outliers_value, outlier_threshold_value, relayoutData):
     """
     This function is called by the `update_df` callback, or by a widget which changes display options.
     It updates all widgets in the app.
@@ -410,11 +428,11 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, exclude_ou
     print_debug(f'Arguments: {arg=}, {map_color_mode=}, {choropleth_options=}')
 
     # Determine exclude flag from checklist value
-    exclude_outliers = False
+    exclude_outliers = True
     try:
         exclude_outliers = 'Exclude Outliers' in (exclude_outliers_value or [])
     except Exception:
-        exclude_outliers = False
+        exclude_outliers = True
 
     threshold = float(outlier_threshold_value or 0.01)
 
@@ -431,6 +449,7 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, exclude_ou
         pu.update_fatalities_line_non_cumulative(data_filtered),
         pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
         pu.update_subeventtype_line(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_events_per_day_by_category(data_filtered, events_category or 'event_type', trend_window=7, exclude_outliers=exclude_outliers, outlier_threshold=threshold),
     )
 
 
