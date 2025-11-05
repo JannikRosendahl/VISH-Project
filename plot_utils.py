@@ -1,6 +1,8 @@
-import plotly.express as px
-import pandas as pd
 from typing import Any
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 from geo_utils import load_geojson_files_with_featureid, merge_geojsons
 from helpers import compute_allowed_categories
 
@@ -297,15 +299,88 @@ def update_fatalities_line(data_filtered: pd.DataFrame):
     return fig
 
 
-def update_fatalities_line_non_cumulative(data_filtered: pd.DataFrame):
+def update_fatalities_line_non_cumulative(data_filtered: pd.DataFrame, trend_window: int = 7*2):
+    """Return fatalities per day chart with trend and cumulative fatalities on a secondary y-axis.
+
+    - Primary y-axis: daily fatalities and rolling trend.
+    - Secondary y-axis: cumulative fatalities (same time axis).
+    """
     fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
-    fig = px.line(
-        fatalities_by_date,
-        x='event_date',
-        y='fatalities',
-        title='Fatalities Per Day',
-        labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
+
+    # If no data, return an empty figure
+    if fatalities_by_date.empty:
+        return px.line()
+
+    # Ensure the dates are sorted before computing rolling average
+    fatalities_by_date = fatalities_by_date.sort_values('event_date')
+
+    # Compute rolling trend
+    fatalities_by_date['trend'] = (
+        fatalities_by_date['fatalities']
+        .rolling(window=trend_window, min_periods=1)
+        .mean()
     )
+
+    # Compute cumulative fatalities for the secondary axis
+    fatalities_by_date['cumulative'] = fatalities_by_date['fatalities'].cumsum()
+
+    # Create a subplot with secondary y-axis
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    # Base daily fatalities line (lighter, thinner) on primary y-axis
+    fig.add_trace(
+        go.Scatter(
+            x=fatalities_by_date['event_date'],
+            y=fatalities_by_date['fatalities'],
+            mode='lines',
+            name='Daily Fatalities',
+            line=dict(color='blue', width=1),
+            hovertemplate='%{x}<br>Daily: %{y}<extra></extra>'
+        ),
+        secondary_y=False,
+    )
+
+    # Trend line on primary y-axis (drawn on top)
+    fig.add_trace(
+        go.Scatter(
+            x=fatalities_by_date['event_date'],
+            y=fatalities_by_date['trend'],
+            mode='lines',
+            name=f'{trend_window}-day rolling avg',
+            line=dict(
+                color='crimson',
+                #dash='dash',
+                width=3
+            ),
+            hovertemplate='%{x}<br>Trend: %{y:.1f}<extra></extra>'
+        ),
+        secondary_y=False,
+    )
+
+    # Cumulative fatalities on secondary y-axis (scaled, thicker)
+    fig.add_trace(
+        go.Scatter(
+            x=fatalities_by_date['event_date'],
+            y=fatalities_by_date['cumulative'],
+            mode='lines',
+            name='Cumulative Fatalities',
+            line=dict(color='lightgray', width=3),
+            hovertemplate='%{x}<br>Cumulative: %{y}<extra></extra>'
+        ),
+        secondary_y=True,
+    )
+
+    # Layout: label axes and make the secondary axis readable
+    fig.update_layout(
+        title='Fatalities Per Day (with Trend) and Cumulative Fatalities',
+        xaxis_title='Date',
+        legend_title_text='Series',
+        template='plotly_white'
+    )
+
+    fig.update_yaxes(title_text='Daily Fatalities', secondary_y=False)
+    fig.update_yaxes(title_text='Cumulative Fatalities', secondary_y=True)
+
     return fig
 
 

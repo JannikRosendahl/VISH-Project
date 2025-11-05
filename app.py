@@ -272,7 +272,8 @@ app.layout = html.Div(
                                 'gridColumn': f'1 / span {WIDGET_COLS}',
                                 'gridRow': '2',
                                 'minHeight': f'{MAP_MIN_HEIGHT}px',
-                                'maxHeight' : '100%'
+                                'maxHeight' : '100%',
+                                'display': 'none',
                             }
                         ),
                         # Dynamically generate widgets for the bottom area
