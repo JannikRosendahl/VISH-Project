@@ -1,13 +1,15 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
 import copy
-import json
 import os
-
-import chardet
 import pandas as pd
 import plotly.express as px
 from dash import Dash, Input, Output, State, callback, ctx, dcc, html
+
+from data_utils import default_file, update_available_files, load_data
+from geo_utils import load_geojson_files_with_featureid, merge_geojsons
+from helpers import compute_allowed_categories, maybe_filter_by_outliers
+import plot_utils as pu
 
 debug = True
 app = Dash(__name__)
@@ -17,45 +19,7 @@ def print_debug(*args, **kwargs):
     if debug:
         print(*args, **kwargs)
 
-default_file = '2022-01-01-2025-06-11-Europe.csv'
-available_files: set
-
-def update_available_files() -> set[str]:
-    global default_file
-    available_files = set()
-    available_files.add(default_file)
-
-    data_path = 'data/'
-    try:
-        files = os.listdir(data_path)
-        for file in files:
-            if file.endswith('.csv'):
-                available_files.add(file)
-    except FileNotFoundError:
-        pass
-    print_debug(f'Available files: {available_files}')
-    return available_files
 available_files = update_available_files()
-
-def load_data(file_name: str) -> pd.DataFrame:
-    data_path = 'data/' + file_name
-    
-    # check if the file exists locally
-    try:
-        with open(data_path, 'r') as f:
-            data = pd.read_csv(f)
-            print('Loaded data from local file')
-    except FileNotFoundError:
-        os.makedirs('data', exist_ok=True)
-        print('Local file not found, downloading from URL, this may take a minute')
-        url = 'http://www.jannik-rosendahl.com/data/' + file_name
-        data = pd.read_csv(url)
-        data.to_csv(data_path, index=False)
-        print('Downloaded data from URL and saved to local file')
-    
-    data['event_date'] = pd.to_datetime(data['event_date'])
-    data['event_date_i'] = data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp()))
-    return data
 
 data = load_data(default_file)
 
@@ -69,14 +33,12 @@ map_center = {}
 color_modes = ['country', 'sub_event_type', 'event_date', 'fatalities']
 choropleth_color_modes = data['event_type'].unique().tolist()
 
-sub_event_type_color_map = {set: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, set in enumerate(sorted(data['sub_event_type'].unique()))}
+# color maps
+sub_event_type_color_map = {s: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, s in enumerate(sorted(data['sub_event_type'].unique()))}
 event_type_color_map = {et: px.colors.qualitative.Prism[i % len(px.colors.qualitative.Prism)] for i, et in enumerate(sorted(data['event_type'].unique()))}
-
-# country color map
 country_palette = px.colors.qualitative.Alphabet
 countries = sorted(data['country'].unique())
 country_color_map = {}
-
 for i, country in enumerate(countries):
     if country.lower() == 'ukraine':
         country_color_map[country] = 'blue'
@@ -444,331 +406,41 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, exclude_ou
     threshold = float(outlier_threshold_value or 0.01)
 
     return (
-        render_map(map_color_mode, relayoutData),
+        pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, map_color_mode, relayoutData),
         update_date_slider_text(minTimestamp, maxTimestamp),
-        update_event_type_pie(exclude_outliers, threshold),
-        update_choropleth(choropleth_options),
-        update_events_over_time(exclude_outliers, threshold),
-        update_events_over_time_3d(exclude_outliers, threshold),
-        update_events_by_source(exclude_outliers, threshold),
-        update_event_type_bar(exclude_outliers, threshold),
-        update_fatalities_line(),
-        update_fatalities_line_non_cumulative(),
-        update_fatalities_pie(exclude_outliers, threshold),
-        update_subeventtype_line(exclude_outliers, threshold),
+        pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, threshold),
+        pu.update_choropleth(data_filtered, choropleth_options),
+        pu.update_events_over_time(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_events_over_time_3d(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_events_by_source(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_event_type_bar(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_fatalities_line(data_filtered),
+        pu.update_fatalities_line_non_cumulative(data_filtered),
+        pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
+        pu.update_subeventtype_line(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
     )
 
 
 def render_map(color_mode, relayout_data=None):
-    global data_filtered
-    global map_center
-
-    hovertemplate = (
-        "<b>🌍 Country:</b> %{customdata[1]}<br>"
-        "<b>⚠️ Sub-Event-Type:</b> %{customdata[2]}<br>"
-        "<b>📅 Date:</b> %{customdata[3]}<br>"
-        "<b>👤 Actor 1:</b> %{customdata[4]}<br>"
-        "<b>👤 Actor 2:</b> %{customdata[5]}<br>"
-        "<b>🪦 Fatalities:</b> %{customdata[6]}<extra></extra>"
-    )
-    custom_data = ['event_id_cnty', 'country', 'sub_event_type', 'event_date', 'actor1', 'actor2', 'fatalities']
-
-
-    match color_mode:
-        case 'country':
-            fig = px.scatter_map(
-                data_filtered,
-                lat='latitude',
-                lon='longitude',
-                hover_data=['fatalities'],
-                color='country',
-                color_discrete_map=country_color_map,
-                zoom=5,
-                custom_data=custom_data,
-                opacity=1,
-                center=map_center,
-                height=600
-            )
-        case 'sub_event_type':
-            fig = px.scatter_map(
-                data_filtered,
-                lat='latitude',
-                lon='longitude',
-                hover_data=['fatalities'],
-                color='sub_event_type',
-                color_discrete_map=sub_event_type_color_map,
-                zoom=5,
-                custom_data=custom_data,
-                opacity=1,
-                center=map_center,
-                height=600
-            )
-        case 'event_date':
-            fig = px.scatter_map(
-                data_filtered,
-                lat='latitude',
-                lon='longitude',
-                hover_data=['fatalities'],
-                color='event_date_i',
-                color_continuous_scale=px.colors.sequential.Plasma,
-                zoom=5,
-                custom_data=custom_data,
-                opacity=1,
-                labels={'event_date_i': 'Event Date'},
-                center=map_center,
-                height=600
-            )
-        case 'fatalities':  # <-- Add this case
-            fig = px.scatter_map(
-                data_filtered,
-                lat='latitude',
-                lon='longitude',
-                hover_data=['fatalities'],
-                color='fatalities',
-                color_continuous_scale=px.colors.sequential.Bluered,
-                zoom=5,
-                size='fatalities',
-                custom_data=custom_data,
-                opacity=0.8,
-                labels={'fatalities': 'Fatalities'},
-                center=map_center,
-                height=600
-            )
-        case _:
-            print_debug('Invalid color mode, defaulting to country')
-            fig = px.scatter_map(
-                data_filtered,
-                lat='latitude',
-                lon='longitude',
-                hover_data=['fatalities'],
-                color='country',
-                color_discrete_map=country_color_map,
-                zoom=5,
-                custom_data=custom_data,
-                opacity=1,
-                center=map_center,
-                height=600
-            )
-    fig.update_layout(
-        clickmode='event+select',
-        margin=dict(t=0, b=0, l=0, r=0),
-        autosize=False
-    )
-    fig.update_traces(
-        selected=dict(marker=dict(opacity=1)),
-        unselected=dict(marker=dict(opacity=1)),
-        hovertemplate = hovertemplate
-    )
-    if relayoutData and 'map.center' in relayoutData and 'map.zoom' in relayoutData:
-        print_debug('trying to preserve map state')
-        map_center = relayoutData['map.center']
-        fig.update_layout(
-            mapbox_center=relayoutData['map.center'],
-            mapbox_zoom=relayoutData['map.zoom']
-        )
-    return fig
+    # now using plot_utils.render_map
+    return pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, color_mode, relayout_data)
 
 def update_event_type_pie(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-
-    event_counts = data_filtered['event_type'].value_counts().reset_index()
-    event_counts.columns = ['event_type', 'count']
-
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'event_type', outlier_threshold)
-        event_counts = event_counts[event_counts['event_type'].isin(allowed)]
-
-    if event_counts.empty:
-        return px.pie()
-
-    fig = px.pie(
-        event_counts,
-        values='count',
-        names='event_type',
-        title='Percentage of Total Events by Event Type',
-        labels={'event_type': 'Event Type', 'count': 'Number of Events'},
-        color='event_type',
-        color_discrete_map={et: event_type_color_map.get(et, px.colors.qualitative.Alphabet[0]) for et in event_counts['event_type']}
-    )
-    return fig
+    return pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, outlier_threshold)
 
 def update_choropleth(event_type_selector):
-    global data_filtered
+    return pu.update_choropleth(data_filtered, event_type_selector)
 
-    filtered = data_filtered[data_filtered['country'].isin(['Ukraine'])]
-    if len(filtered) == 0:
-        print_debug('No data available for Ukraine, returning empty figure')
-        return px.choropleth()
-    
-    # check if the event_type_selector has datapoints
-    if event_type_selector not in filtered['event_type'].unique():
-        print_debug(f'No data available for event type: {event_type_selector}, returning empty figure')
-        return px.choropleth()
-
-    # Gruppieren nach Region
-    # Create a pivot table: rows = admin1, columns = event_type, values = event counts
-    admin1_event_counts = pd.pivot_table(
-        filtered,
-        index='admin1',
-        columns='event_type',
-        values='event_id_cnty',  # or any column, since we use 'count'
-        aggfunc='count',
-        fill_value=0
-    ).reset_index()
-
-    # max event count for color range
-    max_event_count = admin1_event_counts.get(event_type_selector, pd.Series([0])).max()
-
-    # GeoJSON-Dateien laden
-
-    ukraine_geojson_directory = 'geodata/ukraine_geojson/'
-    geojson_files = load_geojson_files_with_featureid(ukraine_geojson_directory)
-    merged_geojson = merge_geojsons(geojson_files)
+# geo json helpers moved to geo_utils
 
 
-    fig = px.choropleth_map(
-        admin1_event_counts,
-        geojson=merged_geojson,
-        color=event_type_selector,
-        locations="admin1",
-        featureidkey="id",
-        color_continuous_scale=px.colors.sequential.matter,
-        range_color=[0, max_event_count],
-        map_style="carto-positron",
-        center={"lat": 49, "lon": 32},
-        zoom=3
-    )
-
-    fig.update_geos(fitbounds="locations", visible=False)
-    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
-    return fig
-
-def load_geojson_files_with_featureid(dir):
-    geojson_data = {}
-    #print_debug("Loading GeoJSON files from directory:", dir)
-
-    # Funktion zum Laden einer Datei mit automatischer Kodierungserkennung
-    def load_file_with_encoding(file_path):
-        with open(file_path, 'rb') as f:
-            raw_data = f.read()
-            result = chardet.detect(raw_data)  # Kodierung erkennen
-            encoding = result['encoding']
-        with open(file_path, 'r', encoding=encoding) as f:
-            return json.load(f)
-
-    # Ukraine GeoJSONs laden
-    for filename in os.listdir(dir):
-        if filename.endswith('.geojson'):
-            f = load_file_with_encoding(os.path.join(dir, filename))
-            features = [f]
-            for feature in features:
-                name = feature['properties']['name:en']
-                if name == 'Kiev Oblast':
-                    name = 'Kyiv'
-                if name == 'Odessa Oblast':
-                    name = 'Odesa'
-                if name == 'Autonomous Republic of Crimea':
-                    name = 'Crimea'
-                feature['properties']['name:en'] = name.replace('Oblast', '').strip()
-                feature_id = feature['properties']['name:en']
-                feature['id'] = feature_id  # Setze die ID basierend auf "name:en"
-            geojson_data[filename] = f
-
-    return geojson_data
-
-def merge_geojsons(geojson_dict):
-    merged = {
-        "type": "FeatureCollection",
-        "features": []
-    }
-    for g in geojson_dict.values():
-        if "features" in g:
-            merged["features"].extend(copy.deepcopy(g["features"]))
-        elif g.get("type") == "Feature":
-            merged["features"].append(copy.deepcopy(g))
-    return merged
-
-
-def compute_allowed_categories(df: pd.DataFrame, column: str, threshold: float, value_col: str | None = None) -> set:
-    """
-    Return a set of category values from `column` whose relative occurrence (by count or by `value_col` sum)
-    is >= threshold. If threshold filters out everything, return the full set to avoid empty plots.
-    """
-    if df.empty or threshold <= 0:
-        return set(df[column].dropna().unique())
-
-    if value_col is None:
-        counts = df[column].value_counts()
-    else:
-        counts = df.groupby(column)[value_col].sum()
-
-    total = counts.sum()
-    if total <= 0:
-        return set(counts.index)
-
-    rel = counts / total
-    allowed = set(rel[rel >= threshold].index)
-    if not allowed:
-        # Don't return empty set — fallback to keeping all categories
-        return set(counts.index)
-    return allowed
-
-
-def maybe_filter_by_outliers(df: pd.DataFrame, column: str, exclude_outliers: bool, threshold: float, value_col: str | None = None) -> pd.DataFrame:
-    """Return df filtered to only include allowed categories if exclude_outliers is True."""
-    if not exclude_outliers:
-        return df
-    allowed = compute_allowed_categories(df, column, threshold, value_col=value_col)
-    if not allowed:
-        return df
-    return df[df[column].isin(allowed)]
+# helpers moved to helpers.py
 
 def update_events_over_time(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    grouped_df = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
-
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
-        grouped_df = grouped_df[grouped_df['sub_event_type'].isin(allowed)]
-
-    if grouped_df.empty:
-        return px.line()
-
-    fig = px.line(
-        grouped_df,
-        x='event_date',
-        y='count',
-        line_group='sub_event_type',
-        color='sub_event_type',
-        color_discrete_map=sub_event_type_color_map,
-        title='Events Over Time',
-        labels={'event_date': 'Date', 'count': 'Number of Events'},
-    )
-    return fig
+    return pu.update_events_over_time(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 def update_events_over_time_3d(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    grouped_df = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
-
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
-        grouped_df = grouped_df[grouped_df['sub_event_type'].isin(allowed)]
-
-    if grouped_df.empty:
-        return px.line_3d()
-
-    fig = px.line_3d(
-        grouped_df,
-        x='event_date',
-        y='sub_event_type',
-        z='count',
-        line_group='sub_event_type',
-        color='sub_event_type',
-        color_discrete_map=sub_event_type_color_map,
-        title='Events Over Time 3D',
-        labels={'event_date': 'Date', 'sub_event_type' : 'Sub Event Type', 'count': 'Number of Events'},
-    )
-    return fig
+    return pu.update_events_over_time_3d(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 @callback(Output('notes', 'children'), Input('map', 'clickData'))
 def update_notes(clickData):
@@ -802,71 +474,10 @@ def update_date_slider(clickData):
     return markers 
 
 def update_events_by_source(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    # Count events per source
-    top_sources = (
-        data_filtered.groupby(['source']).size()
-        .nlargest(5)
-        .index.tolist()
-    )
-    filtered_top = data_filtered[data_filtered['source'].isin(top_sources)]
-    source_event_counts = (
-        filtered_top.groupby(['source', 'sub_event_type'])
-        .size()
-        .reset_index(name='count')
-    )
-
-    # Apply outlier exclusion on the sub_event_type (color) if requested
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
-        source_event_counts = source_event_counts[source_event_counts['sub_event_type'].isin(allowed)]
-
-    # Sort by total number of reports per source (descending)
-    source_totals = source_event_counts.groupby('source')['count'].sum().sort_values(ascending=False)
-    source_event_counts['source'] = pd.Categorical(
-        source_event_counts['source'],
-        categories=source_totals.index,
-        ordered=True
-    )
-    source_event_counts = source_event_counts.sort_values(['source', 'sub_event_type'])
-
-    if source_event_counts.empty:
-        return px.bar()
-
-    fig = px.bar(
-        source_event_counts,
-        x='source',
-        y='count',
-        color='sub_event_type',
-        color_discrete_map=sub_event_type_color_map,
-        title='Top 5 Reporting Sources and Sub Event Types',
-        labels={'count': 'Number of Events', 'source': 'Source', 'sub_event_type': 'Sub Event Type'},
-        barmode='stack'
-    )
-    return fig
+    return pu.update_events_by_source(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 def update_event_type_bar(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    event_counts = data_filtered.groupby(['event_type', 'sub_event_type']).size().reset_index(name='count')
-
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
-        event_counts = event_counts[event_counts['sub_event_type'].isin(allowed)]
-
-    if event_counts.empty:
-        return px.bar()
-
-    fig = px.bar(
-        event_counts,
-        x='event_type',
-        y='count',
-        color='sub_event_type',
-        color_discrete_map=sub_event_type_color_map,
-        title='Event Type Breakdown by Sub Event Type',
-        labels={'count': 'Number of Events', 'event_type': 'Event Type', 'sub_event_type': 'Sub Event Type'},
-        barmode='stack'
-    )
-    return fig
+    return pu.update_event_type_bar(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 def update_date_slider_text(minTimestamp, maxTimestamp):
     global data_filtered
@@ -875,93 +486,16 @@ def update_date_slider_text(minTimestamp, maxTimestamp):
     return f'Showing data starting from {start_date} to {end_date}. Currently showing {len(data_filtered)} events.'
 
 def update_fatalities_line():
-    global data_filtered
-    fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
-    fatalities_by_date['fatalities'] = fatalities_by_date['fatalities'].cumsum()
-    fig = px.line(
-        fatalities_by_date,
-        x='event_date',
-        y='fatalities',
-        title='Fatalities Over Time',
-        labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
-    )
-    return fig
+    return pu.update_fatalities_line(data_filtered)
 
 def update_fatalities_line_non_cumulative():
-    global data_filtered
-    fatalities_by_date = data_filtered.groupby('event_date')['fatalities'].sum().reset_index()
-    fig = px.line(
-        fatalities_by_date,
-        x='event_date',
-        y='fatalities',
-        title='Fatalities Per Day',
-        labels={'event_date': 'Date', 'fatalities': 'Number of Fatalities'}
-    )
-    return fig
+    return pu.update_fatalities_line_non_cumulative(data_filtered)
 
 def update_fatalities_pie(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    fatalities_by_sub_event = data_filtered.groupby('sub_event_type')['fatalities'].sum().reset_index()
-
-    if exclude_outliers:
-        # Use fatalities sums to determine relative importance
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold, value_col='fatalities')
-        fatalities_by_sub_event = fatalities_by_sub_event[fatalities_by_sub_event['sub_event_type'].isin(allowed)]
-    else:
-        # previous behavior: group very small contributors into 'Other'
-        total_fatalities = fatalities_by_sub_event['fatalities'].sum()
-        if total_fatalities > 0:
-            other_group = fatalities_by_sub_event[fatalities_by_sub_event['fatalities'] / total_fatalities < 0.01]
-            if not other_group.empty:
-                other_group_sum = other_group['fatalities'].sum()
-                other_group_name = 'Other'
-                other_group_row = pd.DataFrame({'sub_event_type': [other_group_name], 'fatalities': [other_group_sum]})
-                fatalities_by_sub_event = pd.concat(
-                    [fatalities_by_sub_event[~fatalities_by_sub_event['sub_event_type'].isin(other_group['sub_event_type'])],
-                     other_group_row])
-
-    fatalities_by_sub_event = fatalities_by_sub_event.sort_values(by='fatalities', ascending=False)
-
-    if fatalities_by_sub_event.empty:
-        return px.pie()
-
-    fig = px.pie(
-        fatalities_by_sub_event,
-        values='fatalities',
-        names='sub_event_type',
-        title='Fatalities by Sub Event Type',
-        labels={'fatalities': 'Number of Fatalities', 'sub_event_type': 'Sub Event Type'},
-        color='sub_event_type',
-        color_discrete_map=sub_event_type_color_map,
-    )
-    return fig
+    return pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 def update_subeventtype_line(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    global data_filtered
-    # Group by date and sub_event_type
-    grouped = data_filtered.groupby(['event_date', 'sub_event_type']).size().reset_index(name='count')
-
-    if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'sub_event_type', outlier_threshold)
-        grouped = grouped[grouped['sub_event_type'].isin(allowed)]
-
-    # check if there are any data points
-    if grouped.empty:
-        print_debug('No data available for sub event types, returning empty figure')
-        return px.area()
-    
-    # Pivot for stacked line chart
-    pivot = grouped.pivot(index='event_date', columns='sub_event_type', values='count').fillna(0).cumsum()
-    fig = px.area(
-        pivot,
-        x=pivot.index,
-        y=pivot.columns,
-        title='Cumulative Events by Sub Event Type Over Time',
-        labels={'value': 'Number of Events', 'event_date': 'Date', 'variable': 'Sub Event Type'},
-        color_discrete_map=sub_event_type_color_map,
-    )
-    fig.update_layout(legend_title_text='Sub Event Type')
-    return fig
+    return pu.update_subeventtype_line(data_filtered, sub_event_type_color_map, exclude_outliers, outlier_threshold)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8050, debug=debug, dev_tools_hot_reload=debug, dev_tools_ui=debug)
