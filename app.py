@@ -23,8 +23,13 @@ available_files = update_available_files()
 
 data = load_data(default_file)
 
-minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
-maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
+# Use precomputed integer timestamps when available to avoid expensive per-row conversions
+if 'event_date_i' in data.columns:
+    minTimestamp = int(data['event_date_i'].min())
+    maxTimestamp = int(data['event_date_i'].max())
+else:
+    minTimestamp = int(pd.Timestamp(data['event_date'].min().date()).timestamp())
+    maxTimestamp = int(pd.Timestamp(data['event_date'].max().date()).timestamp())
 
 relayoutData = {}
 map_center = {}
@@ -47,7 +52,10 @@ for i, country in enumerate(countries):
     else:
         country_color_map[country] = country_palette[i % len(country_palette)]
 
-data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+if 'event_date_i' in data.columns:
+    data_filtered = data[(data['event_date_i'] >= minTimestamp) & (data['event_date_i'] <= maxTimestamp)]
+else:
+    data_filtered = data[(data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
                  (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)]
 
 first_of_years = data.groupby([data['event_date'].dt.year])['event_date'].min().sort_values()
@@ -347,10 +355,14 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
     print_debug(f'Arguments: {interval=}, {bool_options=}, {preprocessing_actor_filter=}, {n_clicks=}')
 
     minTimestamp, maxTimestamp = interval
-    data_filtered = data[
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
-        (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
-    ]
+    # Prefer precomputed integer timestamps for performance
+    if 'event_date_i' in data.columns:
+        data_filtered = data[(data['event_date_i'] >= minTimestamp) & (data['event_date_i'] <= maxTimestamp)]
+    else:
+        data_filtered = data[
+            (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) >= minTimestamp) &
+            (data['event_date'].apply(lambda x: int(pd.Timestamp(x).timestamp())) <= maxTimestamp)
+        ]
 
     if 'Include Non-Fatal Events' not in bool_options:
         data_filtered = data_filtered[data_filtered['fatalities'] > 0]
