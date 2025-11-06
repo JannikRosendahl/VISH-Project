@@ -1,7 +1,5 @@
 # __Conflict Monitor__ - Project for MIN-VISH, 2025, Ahlers
 ## [GitHub](https://github.com/JannikRosendahl/VISH-Project)
-# __Conflict Monitor__ - Project for MIN-VISH, 2025, Ahlers
-## [GitHub](https://github.com/JannikRosendahl/VISH-Project)
 ## Team Members
 - Erik Burmester | [Mail](mailto:erik.burmester@stud.hs-hannover.de) | [GitHub](https://github.com/ProgrammIt)
 - Lukas Müller | [Mail](mailto:lukas.mueller2@stud.hs-hannover.de) | [GitHub](https://github.com/mrfloppy93)
