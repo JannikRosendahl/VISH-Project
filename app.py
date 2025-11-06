@@ -1,18 +1,37 @@
 # Run this app with `python app.py` and
 # visit http://127.0.0.1:8050/ in your web browser.
-import copy
-import os
+
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from dash import Dash, Input, Output, State, callback, ctx, dcc, html
 
-from data_utils import default_file, update_available_files, load_data
-from geo_utils import load_geojson_files_with_featureid, merge_geojsons
-from helpers import compute_allowed_categories, maybe_filter_by_outliers
 import plot_utils as pu
+from data_utils import default_file, load_data, update_available_files
 
 debug = True
 app = Dash(__name__)
+
+# Per-widget enable/disable mapping. Set a widget id to False to hide it and
+# avoid computing it. If a widget id is missing from this dict it defaults to True.
+# Example: to disable the event type pie and events-over-time-3d set
+# WIDGETS_ENABLED = {'event-type-pie': False, 'events-over-time-3d': False}
+WIDGETS_ENABLED = {
+    # default: keep all enabled; add overrides here
+    'fatalities-line': False,
+    'events-over-time' : False,
+    'subeventtype-line': False,
+    
+}
+
+
+def is_widget_enabled(widget_id: str) -> bool:
+    """Return whether a given widget is enabled. Backwards-compatible with
+    a boolean WIDGETS_ENABLED (older behavior)."""
+    global WIDGETS_ENABLED
+    if isinstance(WIDGETS_ENABLED, bool):
+        return WIDGETS_ENABLED
+    return bool(WIDGETS_ENABLED.get(widget_id, True))
 
 def print_debug(*args, **kwargs):
     global debug
@@ -305,7 +324,9 @@ app.layout = html.Div(
                                     'gridColumn': f'{(i % WIDGET_COLS) + 1}',
                                     'gridRow': f'{(i // WIDGET_COLS) + 3}',
                                     'minHeight': f'{WIDGET_MIN_HEIGHT}px',
-                                    'maxHeight': '100%'
+                                    'maxHeight': '100%',
+                                    # hide per-widget according to WIDGETS_ENABLED mapping
+                                    'display': 'none' if not is_widget_enabled(widget_id) else 'block'
                                 }
                             )
                             for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
@@ -435,21 +456,104 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_cat
         exclude_outliers = True
 
     threshold = float(outlier_threshold_value or 0.01)
+    # If none of the widgets are enabled (via WIDGETS_ENABLED mapping), skip heavy compute
+    widget_output_ids = [
+        'event-type-pie', 'choropleth-map', 'events-over-time', 'events-over-time-3d',
+        'events-by-source', 'event-type-bar', 'fatalities-line', 'fatalities-line-non-cumulative',
+        'fatalities-pie', 'subeventtype-line', 'events-per-day-by-type'
+    ]
+    any_enabled = any(is_widget_enabled(wid) for wid in widget_output_ids)
+    if not any_enabled:
+        map_fig = pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, map_color_mode, relayoutData)
+        date_text = update_date_slider_text(minTimestamp, maxTimestamp)
+        # return empty figures for all widget outputs (do not call pu.* functions)
+        placeholders = [go.Figure()] * len(widget_output_ids)
+        return (map_fig, date_text, *placeholders)
+
+    # Build each widget result only if the widget is enabled
+    map_fig = pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, map_color_mode, relayoutData)
+    date_text = update_date_slider_text(minTimestamp, maxTimestamp)
+
+    # 3: event-type-pie
+    if is_widget_enabled('event-type-pie'):
+        w_event_type_pie = pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_event_type_pie = go.Figure()
+
+    # 4: choropleth-map
+    if is_widget_enabled('choropleth-map'):
+        w_choropleth = pu.update_choropleth(data_filtered, choropleth_options)
+    else:
+        w_choropleth = go.Figure()
+
+    # 5: events-over-time
+    if is_widget_enabled('events-over-time'):
+        w_events_over_time = pu.update_events_over_time(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_events_over_time = go.Figure()
+
+    # 6: events-over-time-3d
+    if is_widget_enabled('events-over-time-3d'):
+        w_events_over_time_3d = pu.update_events_over_time_3d(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_events_over_time_3d = go.Figure()
+
+    # 7: events-by-source
+    if is_widget_enabled('events-by-source'):
+        w_events_by_source = pu.update_events_by_source(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_events_by_source = go.Figure()
+
+    # 8: event-type-bar
+    if is_widget_enabled('event-type-bar'):
+        w_event_type_bar = pu.update_event_type_bar(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_event_type_bar = go.Figure()
+
+    # 9: fatalities-line
+    if is_widget_enabled('fatalities-line'):
+        w_fatalities_line = pu.update_fatalities_line(data_filtered)
+    else:
+        w_fatalities_line = go.Figure()
+
+    # 10: fatalities-line-non-cumulative
+    if is_widget_enabled('fatalities-line-non-cumulative'):
+        w_fatalities_line_nc = pu.update_fatalities_line_non_cumulative(data_filtered)
+    else:
+        w_fatalities_line_nc = go.Figure()
+
+    # 11: fatalities-pie
+    if is_widget_enabled('fatalities-pie'):
+        w_fatalities_pie = pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_fatalities_pie = go.Figure()
+
+    # 12: subeventtype-line
+    if is_widget_enabled('subeventtype-line'):
+        w_subeventtype_line = pu.update_subeventtype_line(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
+    else:
+        w_subeventtype_line = go.Figure()
+
+    # 13: events-per-day-by-type
+    if is_widget_enabled('events-per-day-by-type'):
+        w_events_per_day = pu.update_events_per_day_by_category(data_filtered, events_category or 'event_type', trend_window=7, exclude_outliers=exclude_outliers, outlier_threshold=threshold)
+    else:
+        w_events_per_day = go.Figure()
 
     return (
-        pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, map_color_mode, relayoutData),
-        update_date_slider_text(minTimestamp, maxTimestamp),
-        pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, threshold),
-        pu.update_choropleth(data_filtered, choropleth_options),
-        pu.update_events_over_time(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_events_over_time_3d(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_events_by_source(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_event_type_bar(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_fatalities_line(data_filtered),
-        pu.update_fatalities_line_non_cumulative(data_filtered),
-        pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_subeventtype_line(data_filtered, sub_event_type_color_map, exclude_outliers, threshold),
-        pu.update_events_per_day_by_category(data_filtered, events_category or 'event_type', trend_window=7, exclude_outliers=exclude_outliers, outlier_threshold=threshold),
+        map_fig,
+        date_text,
+        w_event_type_pie,
+        w_choropleth,
+        w_events_over_time,
+        w_events_over_time_3d,
+        w_events_by_source,
+        w_event_type_bar,
+        w_fatalities_line,
+        w_fatalities_line_nc,
+        w_fatalities_pie,
+        w_subeventtype_line,
+        w_events_per_day,
     )
 
 
