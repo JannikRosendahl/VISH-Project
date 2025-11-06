@@ -8,7 +8,7 @@ from geo_utils import load_geojson_files_with_featureid, merge_geojsons
 from helpers import compute_allowed_categories
 
 
-def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_type_color_map: dict, map_center: dict, color_mode: str, relayoutData=None):
+def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_type_color_map: dict, event_type_color_map: dict, map_center: dict, color_mode: str, relayoutData=None, map_height=800):
     hovertemplate = (
         "<b>🌍 Country:</b> %{customdata[1]}<br>"
         "<b>⚠️ Sub-Event-Type:</b> %{customdata[2]}<br>"
@@ -32,7 +32,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
                 custom_data=custom_data,
                 opacity=1,
                 center=map_center,
-                height=600
+                height=map_height
             )
         case 'sub_event_type':
             fig = px.scatter_map(
@@ -46,7 +46,21 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
                 custom_data=custom_data,
                 opacity=1,
                 center=map_center,
-                height=600
+                height=map_height
+            )
+        case 'event_type':
+            fig = px.scatter_map(
+                data_filtered,
+                lat='latitude',
+                lon='longitude',
+                hover_data=['fatalities'],
+                color='event_type',
+                color_discrete_map=event_type_color_map,
+                zoom=5,
+                custom_data=custom_data,
+                opacity=1,
+                center=map_center,
+                height=map_height
             )
         case 'event_date':
             fig = px.scatter_map(
@@ -61,7 +75,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
                 opacity=1,
                 labels={'event_date_i': 'Event Date'},
                 center=map_center,
-                height=600
+                height=map_height
             )
         case 'fatalities':
             fig = px.scatter_map(
@@ -77,7 +91,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
                 opacity=0.8,
                 labels={'fatalities': 'Fatalities'},
                 center=map_center,
-                height=600
+                height=map_height
             )
         case _:
             fig = px.scatter_map(
@@ -91,7 +105,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
                 custom_data=custom_data,
                 opacity=1,
                 center=map_center,
-                height=600
+                height=map_height
             )
 
     fig.update_layout(
