@@ -307,6 +307,19 @@ app.layout = html.Div(
                                 style={'marginTop': '0.5rem'}
                             ),
                         ]),
+                        html.Div([
+                            html.Label('Event pie uses', style={'marginTop': '0.5rem'}),
+                            dcc.RadioItems(
+                                options=[
+                                    {'label': 'Event Type', 'value': 'event_type'},
+                                    {'label': 'Sub Event Type', 'value': 'sub_event_type'},
+                                ],
+                                value='sub_event_type',
+                                id='event-pie-category-selector',
+                                inline=True,
+                                style={'marginTop': '0.5rem'}
+                            ),
+                        ]),
                         html.Hr(style={'margin': '1rem 0'}),
                                 html.Div(
                                     id='notes',
@@ -485,6 +498,7 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
     Input('map-color-selector', 'value'),
     Input('choropleth-map-color-selector', 'value'),
     Input('events-category-selector', 'value'),
+    Input('event-pie-category-selector', 'value'),
     Input('exclude-outliers-checkbox', 'value'),
     Input('outlier-threshold-slider', 'value'),
 ], [
@@ -492,7 +506,7 @@ def update_df(_, interval, bool_options: list[str], preprocessing_actor_filter: 
 ], running=[
     (Output('loading-indicator', 'className'), 'loader on', 'loader')
 ])
-def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_category: str, exclude_outliers_value, outlier_threshold_value, relayoutData):
+def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_category: str, event_pie_category: str, exclude_outliers_value, outlier_threshold_value, relayoutData):
     """
     This function is called by the `update_df` callback, or by a widget which changes display options.
     It updates all widgets in the app.
@@ -535,7 +549,9 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_cat
 
     # 3: event-type-pie (part of combined pair)
     if combined_pies_enabled:
-        w_event_type_pie = pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, threshold)
+        pie_cat = event_pie_category or 'sub_event_type'
+        pie_color_map = event_type_color_map if pie_cat == 'event_type' else sub_event_type_color_map
+        w_event_type_pie = pu.update_event_type_pie(data_filtered, pie_color_map, category_col=pie_cat, exclude_outliers=exclude_outliers, outlier_threshold=threshold)
     else:
         w_event_type_pie = go.Figure()
 
@@ -621,7 +637,8 @@ def render_map(color_mode, relayout_data=None):
     return pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, color_mode, relayout_data)
 
 def update_event_type_pie(exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    return pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, outlier_threshold)
+    # convenience wrapper: default to sub_event_type for backward compatibility / default behavior
+    return pu.update_event_type_pie(data_filtered, sub_event_type_color_map, category_col='sub_event_type', exclude_outliers=exclude_outliers, outlier_threshold=outlier_threshold)
 
 def update_choropleth(event_type_selector):
     return pu.update_choropleth(data_filtered, event_type_selector)

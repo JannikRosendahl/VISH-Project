@@ -1,8 +1,9 @@
-from typing import Any
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
 from geo_utils import load_geojson_files_with_featureid, merge_geojsons
 from helpers import compute_allowed_categories
 
@@ -111,25 +112,61 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
     return fig
 
 
-def update_event_type_pie(data_filtered: pd.DataFrame, event_type_color_map: dict, exclude_outliers: bool = False, outlier_threshold: float = 0.01):
-    event_counts = data_filtered['event_type'].value_counts().reset_index()
-    event_counts.columns = ['event_type', 'count']
+def update_event_type_pie(
+    data_filtered: pd.DataFrame,
+    color_map: dict,
+    category_col: str = 'sub_event_type',
+    exclude_outliers: bool = False,
+    outlier_threshold: float = 0.01,
+):
+    """Generic pie for a categorical column.
+
+    Parameters
+    - data_filtered: DataFrame
+    - color_map: mapping from category value -> color (used as discrete map)
+    - category_col: which column to aggregate (e.g. 'event_type' or 'sub_event_type'). Defaults to 'sub_event_type'.
+    - exclude_outliers, outlier_threshold: as before, used to filter rare categories.
+    """
+    # Guard: missing column -> empty figure
+    if category_col not in data_filtered.columns:
+        return px.pie()
+
+    event_counts = data_filtered[category_col].value_counts().reset_index()
+    event_counts.columns = [category_col, 'count']
 
     if exclude_outliers:
-        allowed = compute_allowed_categories(data_filtered, 'event_type', outlier_threshold)
-        event_counts = event_counts[event_counts['event_type'].isin(allowed)]
+        allowed = compute_allowed_categories(data_filtered, category_col, outlier_threshold)
+        event_counts = event_counts[event_counts[category_col].isin(allowed)]
 
     if event_counts.empty:
         return px.pie()
 
+    # Friendly title
+    title_map = {
+        'event_type': 'Events by Event Type',
+        'sub_event_type': 'Events by Sub Event Type'
+    }
+    title = title_map.get(category_col, f'Events by {category_col}')
+
+    # Build a color_discrete_map ensuring we have a color for every category
+    from itertools import cycle
+    default_palette = px.colors.qualitative.Plotly
+    palette_cycle = cycle(default_palette)
+    color_discrete_map = {}
+    for cat in event_counts[category_col]:
+        color = color_map.get(cat)
+        if color is None:
+            color = next(palette_cycle)
+        color_discrete_map[cat] = color
+
     fig = px.pie(
         event_counts,
         values='count',
-        names='event_type',
-        title='Percentage of Total Events by Event Type',
-        labels={'event_type': 'Event Type', 'count': 'Number of Events'},
-        color='event_type',
-        color_discrete_map={et: event_type_color_map.get(et, px.colors.qualitative.Alphabet[0]) for et in event_counts['event_type']}
+        names=category_col,
+        title=title,
+        labels={category_col: category_col.replace('_', ' ').title(), 'count': 'Number of Events'},
+        color=category_col,
+        color_discrete_map=color_discrete_map,
     )
     return fig
 
