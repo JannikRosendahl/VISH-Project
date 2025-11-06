@@ -101,6 +101,76 @@ widget_graphs = [
     ('events-over-time-3d', 'Events Over Time 3D')
 ]
 
+
+def build_widget_divs():
+    """Build list of widget Divs for the layout. This groups the two pie charts
+    ('fatalities-pie' + 'event-type-pie') into a single horizontal container.
+    """
+    children = []
+    i = 0
+    total = min(len(widget_graphs), WIDGET_ROWS * WIDGET_COLS)
+    while i < total:
+        widget_id, _ = widget_graphs[i]
+
+        # detect the pie-pair: fatalities-pie followed by event-type-pie
+        if widget_id == 'fatalities-pie' and i + 1 < total and widget_graphs[i + 1][0] == 'event-type-pie':
+            # determine whether the combined pair should be shown
+            if 'pie-pair' in (WIDGETS_ENABLED if isinstance(WIDGETS_ENABLED, dict) else {}):
+                combined_enabled = is_widget_enabled('pie-pair')
+            else:
+                # fallback: both must be individually enabled
+                combined_enabled = is_widget_enabled('fatalities-pie') and is_widget_enabled('event-type-pie')
+
+            display_style = 'block' if combined_enabled else 'none'
+
+            outer = html.Div(
+                children=[
+                    html.Div(dcc.Graph(id='fatalities-pie', style={'width': '100%', 'height': '100%'}), style={'flex': '1', 'paddingRight': '0.5rem', 'minWidth': '0'}),
+                    html.Div(dcc.Graph(id='event-type-pie', style={'width': '100%', 'height': '100%'}), style={'flex': '1', 'paddingLeft': '0.5rem', 'minWidth': '0'})
+                ],
+                className='widget',
+                style={
+                    'display': display_style,
+                    'backgroundColor': 'white',
+                    'borderRadius': '12px',
+                    'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                    'padding': '1rem',
+                    'display': 'flex',
+                    'flexDirection': 'row',
+                    'gap': '0.5rem',
+                    # place the combined widget to span two columns so the pies are side-by-side
+                    'gridColumn': f'{(i % WIDGET_COLS) + 1} / span 2',
+                    'gridRow': f'{(i // WIDGET_COLS) + 3}',
+                    'minHeight': f'{WIDGET_MIN_HEIGHT}px',
+                    'maxHeight': '100%'
+                }
+            )
+            children.append(outer)
+            i += 2
+            continue
+
+        # default single-widget div
+        children.append(
+            html.Div(
+                dcc.Graph(id=widget_id),
+                className='widget',
+                style={
+                    'backgroundColor': 'white',
+                    'borderRadius': '12px',
+                    'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
+                    'padding': '1rem',
+                    'gridColumn': f'{(i % WIDGET_COLS) + 1}',
+                    'gridRow': f'{(i // WIDGET_COLS) + 3}',
+                    'minHeight': f'{WIDGET_MIN_HEIGHT}px',
+                    'maxHeight': '100%',
+                    'display': 'none' if not is_widget_enabled(widget_id) else 'block'
+                }
+            )
+        )
+        i += 1
+
+    return children
+
 app.title = 'Conflict Monitor'
 
 app.layout = html.Div(
@@ -312,25 +382,7 @@ app.layout = html.Div(
                             }
                         ),
                         # Dynamically generate widgets for the bottom area
-                        *[
-                            html.Div(
-                                dcc.Graph(id=widget_id),
-                                className='widget',
-                                style={
-                                    'backgroundColor': 'white',
-                                    'borderRadius': '12px',
-                                    'boxShadow': '0 2px 8px rgba(0,0,0,0.07)',
-                                    'padding': '1rem',
-                                    'gridColumn': f'{(i % WIDGET_COLS) + 1}',
-                                    'gridRow': f'{(i // WIDGET_COLS) + 3}',
-                                    'minHeight': f'{WIDGET_MIN_HEIGHT}px',
-                                    'maxHeight': '100%',
-                                    # hide per-widget according to WIDGETS_ENABLED mapping
-                                    'display': 'none' if not is_widget_enabled(widget_id) else 'block'
-                                }
-                            )
-                            for i, (widget_id, _) in enumerate(widget_graphs[:WIDGET_ROWS * WIDGET_COLS])
-                        ],
+                        *build_widget_divs(),
                     ],
                     style={
                         'width': '100%',
@@ -474,8 +526,15 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_cat
     map_fig = pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, map_center, map_color_mode, relayoutData)
     date_text = update_date_slider_text(minTimestamp, maxTimestamp)
 
-    # 3: event-type-pie
-    if is_widget_enabled('event-type-pie'):
+    # Determine if pie pair should be computed together
+    if isinstance(WIDGETS_ENABLED, dict) and 'pie-pair' in WIDGETS_ENABLED:
+        combined_pies_enabled = is_widget_enabled('pie-pair')
+    else:
+        # default: both individual pies must be enabled
+        combined_pies_enabled = is_widget_enabled('fatalities-pie') and is_widget_enabled('event-type-pie')
+
+    # 3: event-type-pie (part of combined pair)
+    if combined_pies_enabled:
         w_event_type_pie = pu.update_event_type_pie(data_filtered, event_type_color_map, exclude_outliers, threshold)
     else:
         w_event_type_pie = go.Figure()
@@ -522,8 +581,8 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_cat
     else:
         w_fatalities_line_nc = go.Figure()
 
-    # 11: fatalities-pie
-    if is_widget_enabled('fatalities-pie'):
+    # 11: fatalities-pie (part of combined pair)
+    if combined_pies_enabled:
         w_fatalities_pie = pu.update_fatalities_pie(data_filtered, sub_event_type_color_map, exclude_outliers, threshold)
     else:
         w_fatalities_pie = go.Figure()
