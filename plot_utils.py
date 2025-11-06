@@ -8,7 +8,18 @@ from geo_utils import load_geojson_files_with_featureid, merge_geojsons
 from helpers import compute_allowed_categories
 
 
-def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_type_color_map: dict, event_type_color_map: dict, map_center: dict, color_mode: str, relayoutData=None, map_height=800):
+def render_map(
+    data_filtered: pd.DataFrame,
+    country_color_map: dict,
+    sub_event_type_color_map: dict,
+    event_type_color_map: dict,
+    map_center: dict,
+    color_mode: str,
+    relayoutData=None,
+    map_height=800,
+    exclude_outliers: bool = False,
+    outlier_threshold: float = 0.01,
+):
     hovertemplate = (
         "<b>🌍 Country:</b> %{customdata[1]}<br>"
         "<b>⚠️ Sub-Event-Type:</b> %{customdata[2]}<br>"
@@ -19,10 +30,21 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
     )
     custom_data = ['event_id_cnty', 'country', 'sub_event_type', 'event_date', 'actor1', 'actor2', 'fatalities']
 
+    # Optionally filter out rare categories for categorical color modes
+    df = data_filtered
+    if exclude_outliers and color_mode in ('sub_event_type', 'event_type', 'country'):
+        try:
+            col = 'sub_event_type' if color_mode == 'sub_event_type' else ('event_type' if color_mode == 'event_type' else 'country')
+            allowed = compute_allowed_categories(data_filtered, col, outlier_threshold)
+            df = data_filtered[data_filtered[col].isin(allowed)]
+        except Exception:
+            # on any failure, fall back to original dataframe
+            df = data_filtered
+
     match color_mode:
         case 'country':
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],
@@ -36,7 +58,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
             )
         case 'sub_event_type':
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],
@@ -50,7 +72,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
             )
         case 'event_type':
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],
@@ -64,7 +86,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
             )
         case 'event_date':
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],
@@ -79,7 +101,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
             )
         case 'fatalities':
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],
@@ -95,7 +117,7 @@ def render_map(data_filtered: pd.DataFrame, country_color_map: dict, sub_event_t
             )
         case _:
             fig = px.scatter_map(
-                data_filtered,
+                df,
                 lat='latitude',
                 lon='longitude',
                 hover_data=['fatalities'],

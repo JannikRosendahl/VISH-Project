@@ -530,14 +530,34 @@ def update_widgets(arg, map_color_mode: str, choropleth_options: str, events_cat
     ]
     any_enabled = any(is_widget_enabled(wid) for wid in widget_output_ids)
     if not any_enabled:
-        map_fig = pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, event_type_color_map, map_center, map_color_mode, relayoutData)
+        map_fig = pu.render_map(
+            data_filtered,
+            country_color_map,
+            sub_event_type_color_map,
+            event_type_color_map,
+            map_center,
+            map_color_mode,
+            relayoutData,
+            exclude_outliers=exclude_outliers,
+            outlier_threshold=threshold,
+        )
         date_text = update_date_slider_text(minTimestamp, maxTimestamp)
         # return empty figures for all widget outputs (do not call pu.* functions)
         placeholders = [go.Figure()] * len(widget_output_ids)
         return (map_fig, date_text, *placeholders)
 
     # Build each widget result only if the widget is enabled
-    map_fig = pu.render_map(data_filtered, country_color_map, sub_event_type_color_map, event_type_color_map, map_center, map_color_mode, relayoutData)
+    map_fig = pu.render_map(
+        data_filtered,
+        country_color_map,
+        sub_event_type_color_map,
+        event_type_color_map,
+        map_center,
+        map_color_mode,
+        relayoutData,
+        exclude_outliers=exclude_outliers,
+        outlier_threshold=threshold,
+    )
     date_text = update_date_slider_text(minTimestamp, maxTimestamp)
 
     # Determine if pie pair should be computed together
